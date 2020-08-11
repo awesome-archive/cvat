@@ -1,65 +1,159 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import './styles.scss';
 import React from 'react';
-
 import { RouteComponentProps } from 'react-router';
 import { withRouter } from 'react-router-dom';
-
-import {
-    Layout,
-    Icon,
-    Button,
-    Menu,
-    Dropdown,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
+import Layout from 'antd/lib/layout';
+import Icon from 'antd/lib/icon';
+import Button from 'antd/lib/button';
+import Menu from 'antd/lib/menu';
+import Dropdown from 'antd/lib/dropdown';
+import Modal from 'antd/lib/modal';
 import Text from 'antd/lib/typography/Text';
 
-import getCore from '../../core';
-import {
-    CVATLogo,
-    AccountIcon,
-} from '../../icons';
-
-const core = getCore();
-const serverHost = core.config.backendAPI.slice(0, -7);
+import { CVATLogo, AccountIcon } from 'icons';
+import consts from 'consts';
+import ChangePasswordDialog from 'components/change-password-modal/change-password-modal';
+import SettingsModal from './settings-modal/settings-modal';
 
 interface HeaderContainerProps {
     onLogout: () => void;
+    switchSettingsDialog: (show: boolean) => void;
+    switchChangePasswordDialog: (show: boolean) => void;
     logoutFetching: boolean;
+    changePasswordFetching: boolean;
     installedAnalytics: boolean;
-    installedAutoAnnotation: boolean;
-    installedTFAnnotation: boolean;
-    installedTFSegmentation: boolean;
+    serverHost: string;
     username: string;
+    toolName: string;
+    serverVersion: string;
+    serverDescription: string;
+    coreVersion: string;
+    canvasVersion: string;
+    uiVersion: string;
+    switchSettingsShortcut: string;
+    settingsDialogShown: boolean;
+    changePasswordDialogShown: boolean;
+    renderChangePasswordItem: boolean;
 }
 
 type Props = HeaderContainerProps & RouteComponentProps;
 
 function HeaderContainer(props: Props): JSX.Element {
     const {
-        installedTFSegmentation,
-        installedAutoAnnotation,
-        installedTFAnnotation,
         installedAnalytics,
         username,
+        toolName,
+        serverHost,
+        serverVersion,
+        serverDescription,
+        coreVersion,
+        canvasVersion,
+        uiVersion,
         onLogout,
         logoutFetching,
+        changePasswordFetching,
+        settingsDialogShown,
+        switchSettingsShortcut,
+        switchSettingsDialog,
+        switchChangePasswordDialog,
+        renderChangePasswordItem,
     } = props;
 
-    const renderModels = installedAutoAnnotation
-        || installedTFAnnotation
-        || installedTFSegmentation;
+    const {
+        CHANGELOG_URL,
+        LICENSE_URL,
+        GITTER_URL,
+        FORUM_URL,
+        GITHUB_URL,
+    } = consts;
+
+    function aboutModal(): void {
+        Modal.info({
+            title: `${toolName}`,
+            content: (
+                <div>
+                    <p>
+                        {`${serverDescription}`}
+                    </p>
+                    <p>
+                        <Text strong>
+                            Server version:
+                        </Text>
+                        <Text type='secondary'>
+                            {` ${serverVersion}`}
+                        </Text>
+                    </p>
+                    <p>
+                        <Text strong>
+                            Core version:
+                        </Text>
+                        <Text type='secondary'>
+                            {` ${coreVersion}`}
+                        </Text>
+                    </p>
+                    <p>
+                        <Text strong>
+                            Canvas version:
+                        </Text>
+                        <Text type='secondary'>
+                            {` ${canvasVersion}`}
+                        </Text>
+                    </p>
+                    <p>
+                        <Text strong>
+                            UI version:
+                        </Text>
+                        <Text type='secondary'>
+                            {` ${uiVersion}`}
+                        </Text>
+                    </p>
+                    <Row type='flex' justify='space-around'>
+                        <Col><a href={CHANGELOG_URL} target='_blank' rel='noopener noreferrer'>{'What\'s new?'}</a></Col>
+                        <Col><a href={LICENSE_URL} target='_blank' rel='noopener noreferrer'>License</a></Col>
+                        <Col><a href={GITTER_URL} target='_blank' rel='noopener noreferrer'>Need help?</a></Col>
+                        <Col><a href={FORUM_URL} target='_blank' rel='noopener noreferrer'>Forum on Intel Developer Zone</a></Col>
+                    </Row>
+                </div>
+            ),
+            width: 800,
+            okButtonProps: {
+                style: {
+                    width: '100px',
+                },
+            },
+        });
+    }
 
     const menu = (
         <Menu className='cvat-header-menu' mode='vertical'>
-            <Menu.Item>
+            <Menu.Item
+                title={`Press ${switchSettingsShortcut} to switch`}
+                onClick={
+                    (): void => switchSettingsDialog(true)
+                }
+            >
                 <Icon type='setting' />
                 Settings
             </Menu.Item>
-            <Menu.Item>
+            <Menu.Item onClick={() => aboutModal()}>
                 <Icon type='info-circle' />
                 About
             </Menu.Item>
+            {renderChangePasswordItem && (
+                <Menu.Item
+                    onClick={(): void => switchChangePasswordDialog(true)}
+                    disabled={changePasswordFetching}
+                >
+                    {changePasswordFetching ? <Icon type='loading' /> : <Icon type='edit' />}
+                    Change password
+                </Menu.Item>
+            )}
+
             <Menu.Item
                 onClick={onLogout}
                 disabled={logoutFetching}
@@ -86,20 +180,16 @@ function HeaderContainer(props: Props): JSX.Element {
                 >
                     Tasks
                 </Button>
-                { renderModels
-                    && (
-                        <Button
-                            className='cvat-header-button'
-                            type='link'
-                            value='models'
-                            onClick={
-                                (): void => props.history.push('/models')
-                            }
-                        >
-                            Models
-                        </Button>
-                    )
-                }
+                <Button
+                    className='cvat-header-button'
+                    type='link'
+                    value='models'
+                    onClick={
+                        (): void => props.history.push('/models')
+                    }
+                >
+                    Models
+                </Button>
                 { installedAnalytics
                     && (
                         <Button
@@ -115,8 +205,7 @@ function HeaderContainer(props: Props): JSX.Element {
                         >
                             Analytics
                         </Button>
-                    )
-                }
+                    )}
             </div>
             <div className='cvat-right-header'>
                 <Button
@@ -124,7 +213,9 @@ function HeaderContainer(props: Props): JSX.Element {
                     type='link'
                     onClick={
                         (): void => {
-                            window.open('https://github.com/opencv/cvat', '_blank');
+                            // false positive
+                            // eslint-disable-next-line security/detect-non-literal-fs-filename
+                            window.open(GITHUB_URL, '_blank');
                         }
                     }
                 >
@@ -155,6 +246,17 @@ function HeaderContainer(props: Props): JSX.Element {
                     </span>
                 </Dropdown>
             </div>
+            <SettingsModal
+                visible={settingsDialogShown}
+                onClose={() => switchSettingsDialog(false)}
+            />
+            { renderChangePasswordItem
+                && (
+                    <ChangePasswordDialog
+                        onClose={() => switchChangePasswordDialog(false)}
+                    />
+                )}
+
         </Layout.Header>
     );
 }

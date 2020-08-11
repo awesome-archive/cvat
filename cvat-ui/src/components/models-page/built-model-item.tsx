@@ -1,15 +1,14 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Row,
-    Col,
-    Tag,
-    Select,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
+import Tag from 'antd/lib/tag';
+import Select from 'antd/lib/select';
 import Text from 'antd/lib/typography/Text';
 
-import { Model } from '../../reducers/interfaces';
+import { Model } from 'reducers/interfaces';
 
 interface Props {
     model: Model;
@@ -21,7 +20,7 @@ export default function BuiltModelItemComponent(props: Props): JSX.Element {
     return (
         <Row className='cvat-models-list-item' type='flex'>
             <Col span={4} xxl={3}>
-                <Tag color='orange'>Tensorflow</Tag>
+                <Tag color='orange'>{model.framework}</Tag>
             </Col>
             <Col span={6} xxl={7}>
                 <Text className='cvat-text-color'>

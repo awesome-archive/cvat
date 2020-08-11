@@ -1,9 +1,10 @@
-import React from 'react';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
 
-import {
-    Icon,
-    Button,
-} from 'antd';
+import React from 'react';
+import Icon from 'antd/lib/icon';
+import Button from 'antd/lib/button';
 
 import ConstructorViewerItem from './constructor-viewer-item';
 import { Label } from './common';

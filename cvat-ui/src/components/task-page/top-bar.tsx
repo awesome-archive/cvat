@@ -1,17 +1,16 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Row,
-    Col,
-    Button,
-    Dropdown,
-    Icon,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
+import Button from 'antd/lib/button';
+import Dropdown from 'antd/lib/dropdown';
+import Icon from 'antd/lib/icon';
 import Text from 'antd/lib/typography/Text';
 
-import ActionsMenuContainer from '../../containers/actions-menu/actions-menu';
-import { MenuIcon } from '../../icons';
+import ActionsMenuContainer from 'containers/actions-menu/actions-menu';
+import { MenuIcon } from 'icons';
 
 interface DetailsComponentProps {
     taskInstance: any;
@@ -32,7 +31,8 @@ export default function DetailsComponent(props: DetailsComponentProps): JSX.Elem
                         <ActionsMenuContainer
                             taskInstance={taskInstance}
                         />
-                    )}
+                    )
+                }
                 >
                     <Button size='large'>
                         <Text className='cvat-text-color'>Actions</Text>

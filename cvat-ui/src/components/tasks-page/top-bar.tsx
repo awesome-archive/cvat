@@ -1,14 +1,13 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
 import { RouteComponentProps } from 'react-router';
 import { withRouter } from 'react-router-dom';
-
-import {
-    Col,
-    Row,
-    Button,
-    Input,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
+import Button from 'antd/lib/button';
+import Input from 'antd/lib/input';
 import Text from 'antd/lib/typography/Text';
 
 interface VisibleTopBarProps {
@@ -53,6 +52,7 @@ function TopBarComponent(props: VisibleTopBarProps & RouteComponentProps): JSX.E
                         onClick={
                             (): void => history.push('/tasks/create')
                         }
+                        icon='plus'
                     >
                          Create new task
                     </Button>

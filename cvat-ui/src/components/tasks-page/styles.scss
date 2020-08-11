@@ -1,3 +1,7 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 @import '../../base.scss';
 
 .cvat-tasks-page {
@@ -5,13 +9,22 @@
     height: 100%;
 
     > div:nth-child(1) {
-        margin-bottom: 10px;
+        padding-bottom: 10px;
 
         div > {
             span {
                 color: $text-color;
             }
         }
+    }
+
+    > div:nth-child(3) {
+        height: 83%;
+        padding-top: 10px;
+    }
+
+    > div:nth-child(4) {
+        padding-top: 10px;
     }
 
     > div:nth-child(2) {
@@ -28,15 +41,6 @@
             display: flex;
             justify-content: flex-end;
         }
-    }
-
-    > div:nth-child(3) {
-        height: 83%;
-        margin-top: 10px;
-    }
-
-    > div:nth-child(4) {
-        margin-top: 10px;
     }
 }
 
@@ -83,48 +87,28 @@
     padding-top: 20px;
     background: $background-color-1;
 
-    /* description */
-    > div:nth-child(2) {
-        word-break: break-all;
-        max-height: 100%;
-        overflow: hidden;
-    }
-
-    /* open, actions */
-    div:nth-child(4) {
-        > div {
-            margin-right: 20px;
-        }
-
-        /* actions */
-        > div:nth-child(2) {
-            margin-right: 5px;
-            margin-top: 10px;
-
-            > div {
-                display: flex;
-                align-items: center;
-            }
-        }
-    }
-
     &:hover {
         border: 1px solid $border-color-hover;
     }
 }
-
 
 .cvat-task-item-preview-wrapper {
     display: flex;
     justify-content: center;
     overflow: hidden;
     margin: 20px;
-    margin-top: 0px;
+    margin-top: 0;
 
     > .cvat-task-item-preview {
         max-width: 140px;
         max-height: 80px;
     }
+}
+
+.cvat-task-item-description {
+    word-break: break-all;
+    max-height: 100%;
+    overflow: hidden;
 }
 
 .cvat-task-progress {
@@ -137,10 +121,8 @@
     margin-right: 5px;
 }
 
-.cvat-task-completed-progress {
-    div.ant-progress-bg {
-        background: $completed-progress-color !important; /* csslint allow: important */
-    }
+.cvat-task-completed-progress div.ant-progress-bg {
+    background: $completed-progress-color !important;
 }
 
 .cvat-task-progress-progress {
@@ -153,6 +135,26 @@
     color: $pending-progress-color;
     fill: $pending-progress-color;
     margin-right: 5px;
+}
+
+.close-auto-annotation-icon {
+    color: $danger-icon-color;
+    opacity: 0.7;
+
+    &:hover {
+        opacity: 1;
+    }
+}
+
+.cvat-item-open-task-actions {
+    margin-right: 5px;
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+}
+
+.cvat-item-open-task-button {
+    margin-right: 20px;
 }
 
 #cvat-create-task-button {

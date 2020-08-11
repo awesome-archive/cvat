@@ -1,10 +1,10 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Icon,
-    Tooltip,
-} from 'antd';
-
+import Icon from 'antd/lib/icon';
+import Tooltip from 'antd/lib/tooltip';
 import Text from 'antd/lib/typography/Text';
 
 import { Label } from './common';
@@ -27,7 +27,7 @@ export default function ConstructorViewerItem(props: ConstructorViewerItemProps)
     return (
         <div style={{ background: color }} className='cvat-constructor-viewer-item'>
             <Text>{label.name}</Text>
-            <Tooltip title='Update attributes'>
+            <Tooltip title='Update attributes' mouseLeaveDelay={0}>
                 <span
                     role='button'
                     tabIndex={0}
@@ -39,7 +39,7 @@ export default function ConstructorViewerItem(props: ConstructorViewerItemProps)
             </Tooltip>
             { label.id < 0
                 && (
-                    <Tooltip title='Delete label'>
+                    <Tooltip title='Delete label' mouseLeaveDelay={0}>
                         <span
                             role='button'
                             tabIndex={0}
@@ -49,8 +49,7 @@ export default function ConstructorViewerItem(props: ConstructorViewerItemProps)
                             <Icon type='close' />
                         </span>
                     </Tooltip>
-                )
-            }
+                )}
         </div>
     );
 }

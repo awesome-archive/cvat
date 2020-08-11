@@ -1,53 +1,97 @@
-import React from 'react';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 
-import { logoutAsync } from '../../actions/auth-actions';
-import {
-    SupportedPlugins,
-    CombinedState,
-} from '../../reducers/interfaces';
+import getCore from 'cvat-core-wrapper';
+import HeaderComponent from 'components/header/header';
+import { SupportedPlugins, CombinedState } from 'reducers/interfaces';
+import { logoutAsync, authActions } from 'actions/auth-actions';
+import { switchSettingsDialog } from 'actions/settings-actions';
 
-import HeaderComponent from '../../components/header/header';
+const core = getCore();
 
 interface StateToProps {
     logoutFetching: boolean;
     installedAnalytics: boolean;
-    installedAutoAnnotation: boolean;
-    installedTFSegmentation: boolean;
-    installedTFAnnotation: boolean;
     username: string;
+    toolName: string;
+    serverHost: string;
+    serverVersion: string;
+    serverDescription: string;
+    coreVersion: string;
+    canvasVersion: string;
+    uiVersion: string;
+    switchSettingsShortcut: string;
+    settingsDialogShown: boolean;
+    changePasswordDialogShown: boolean;
+    changePasswordFetching: boolean;
+    renderChangePasswordItem: boolean;
 }
 
 interface DispatchToProps {
-    onLogout(): void;
+    onLogout: () => void;
+    switchSettingsDialog: (show: boolean) => void;
+    switchChangePasswordDialog: (show: boolean) => void;
 }
 
 function mapStateToProps(state: CombinedState): StateToProps {
-    const { auth } = state;
-    const { plugins } = state.plugins;
+    const {
+        auth: {
+            fetching: logoutFetching,
+            fetching: changePasswordFetching,
+            user: {
+                username,
+            },
+            showChangePasswordDialog: changePasswordDialogShown,
+            allowChangePassword: renderChangePasswordItem,
+        },
+        plugins: {
+            list,
+        },
+        about: {
+            server,
+            packageVersion,
+        },
+        shortcuts: {
+            normalizedKeyMap,
+        },
+        settings: {
+            showDialog: settingsDialogShown,
+        },
+    } = state;
+
     return {
-        logoutFetching: state.auth.fetching,
-        installedAnalytics: plugins[SupportedPlugins.ANALYTICS],
-        installedAutoAnnotation: plugins[SupportedPlugins.AUTO_ANNOTATION],
-        installedTFSegmentation: plugins[SupportedPlugins.TF_SEGMENTATION],
-        installedTFAnnotation: plugins[SupportedPlugins.TF_ANNOTATION],
-        username: auth.user.username,
+        logoutFetching,
+        installedAnalytics: list[SupportedPlugins.ANALYTICS],
+        username,
+        toolName: server.name as string,
+        serverHost: core.config.backendAPI.slice(0, -7),
+        serverDescription: server.description as string,
+        serverVersion: server.version as string,
+        coreVersion: packageVersion.core,
+        canvasVersion: packageVersion.canvas,
+        uiVersion: packageVersion.ui,
+        switchSettingsShortcut: normalizedKeyMap.SWITCH_SETTINGS,
+        settingsDialogShown,
+        changePasswordFetching,
+        changePasswordDialogShown,
+        renderChangePasswordItem,
     };
 }
 
 function mapDispatchToProps(dispatch: any): DispatchToProps {
     return {
         onLogout: (): void => dispatch(logoutAsync()),
+        switchSettingsDialog: (show: boolean): void => dispatch(switchSettingsDialog(show)),
+        switchChangePasswordDialog: (show: boolean): void => (
+            dispatch(authActions.switchChangePasswordDialog(show))
+        ),
     };
-}
-
-function HeaderContainer(props: StateToProps & DispatchToProps): JSX.Element {
-    return (
-        <HeaderComponent {...props} />
-    );
 }
 
 export default connect(
     mapStateToProps,
     mapDispatchToProps,
-)(HeaderContainer);
+)(HeaderComponent);

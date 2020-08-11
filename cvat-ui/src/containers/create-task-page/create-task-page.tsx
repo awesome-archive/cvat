@@ -1,13 +1,17 @@
-import React from 'react';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 
-import { CombinedState } from '../../reducers/interfaces';
-import CreateTaskComponent from '../../components/create-task-page/create-task-page';
-import { CreateTaskData } from '../../components/create-task-page/create-task-content';
-import { createTaskAsync } from '../../actions/tasks-actions';
+import { CombinedState } from 'reducers/interfaces';
+import CreateTaskComponent from 'components/create-task-page/create-task-page';
+import { CreateTaskData } from 'components/create-task-page/create-task-content';
+import { createTaskAsync } from 'actions/tasks-actions';
 
 interface StateToProps {
     status: string;
+    error: string;
     installedGit: boolean;
 }
 
@@ -25,17 +29,11 @@ function mapStateToProps(state: CombinedState): StateToProps {
     const { creates } = state.tasks.activities;
     return {
         ...creates,
-        installedGit: state.plugins.plugins.GIT_INTEGRATION,
+        installedGit: state.plugins.list.GIT_INTEGRATION,
     };
-}
-
-function CreateTaskPageContainer(props: StateToProps & DispatchToProps): JSX.Element {
-    return (
-        <CreateTaskComponent {...props} />
-    );
 }
 
 export default connect(
     mapStateToProps,
     mapDispatchToProps,
-)(CreateTaskPageContainer);
+)(CreateTaskComponent);

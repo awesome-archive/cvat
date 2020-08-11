@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2019 Intel Corporation
+* Copyright (C) 2019-2020 Intel Corporation
 * SPDX-License-Identifier: MIT
 */
 
@@ -32,6 +32,26 @@
         ANNOTATION: 'annotation',
         VALIDATION: 'validation',
         COMPLETED: 'completed',
+    });
+
+    /**
+        * List of RQ statuses
+        * @enum {string}
+        * @name RQStatus
+        * @memberof module:API.cvat.enums
+        * @property {string} QUEUED 'queued'
+        * @property {string} STARTED 'started'
+        * @property {string} FINISHED 'finished'
+        * @property {string} FAILED 'failed'
+        * @property {string} UNKNOWN 'unknown'
+        * @readonly
+    */
+   const RQStatus = Object.freeze({
+        QUEUED: 'queued',
+        STARTED: 'started',
+        FINISHED: 'finished',
+        FAILED: 'failed',
+        UNKNOWN: 'unknown',
     });
 
     /**
@@ -93,6 +113,7 @@
         * @property {string} POLYGON 'polygon'
         * @property {string} POLYLINE 'polyline'
         * @property {string} POINTS 'points'
+        * @property {string} CUBOID 'cuboid'
         * @readonly
     */
     const ObjectShape = Object.freeze({
@@ -100,87 +121,163 @@
         POLYGON: 'polygon',
         POLYLINE: 'polyline',
         POINTS: 'points',
+        CUBOID: 'cuboid',
     });
 
     /**
-        * Object visibility states
+        * Annotation type
         * @enum {string}
-        * @name ObjectShape
+        * @name Source
         * @memberof module:API.cvat.enums
-        * @property {string} ALL 'all'
-        * @property {string} SHAPE 'shape'
-        * @property {string} NONE 'none'
+        * @property {string} MANUAL 'manual'
+        * @property {string} AUTO 'auto'
         * @readonly
     */
-    const VisibleState = Object.freeze({
-        ALL: 'all',
-        SHAPE: 'shape',
-        NONE: 'none',
+    const Source = Object.freeze({
+        MANUAL:'manual',
+        AUTO:'auto',
     });
 
     /**
-        * Event types
-        * @enum {number}
+        * Logger event types
+        * @enum {string}
         * @name LogType
         * @memberof module:API.cvat.enums
-        * @property {number} pasteObject 0
-        * @property {number} changeAttribute 1
-        * @property {number} dragObject 2
-        * @property {number} deleteObject 3
-        * @property {number} pressShortcut 4
-        * @property {number} resizeObject 5
-        * @property {number} sendLogs 6
-        * @property {number} saveJob 7
-        * @property {number} jumpFrame 8
-        * @property {number} drawObject 9
-        * @property {number} changeLabel 10
-        * @property {number} sendTaskInfo 11
-        * @property {number} loadJob 12
-        * @property {number} moveImage 13
-        * @property {number} zoomImage 14
-        * @property {number} lockObject 15
-        * @property {number} mergeObjects 16
-        * @property {number} copyObject 17
-        * @property {number} propagateObject 18
-        * @property {number} undoAction 19
-        * @property {number} redoAction 20
-        * @property {number} sendUserActivity 21
-        * @property {number} sendException 22
-        * @property {number} changeFrame 23
-        * @property {number} debugInfo 24
-        * @property {number} fitImage 25
-        * @property {number} rotateImage 26
+        * @property {string} loadJob Load job
+        * @property {string} saveJob Save job
+        * @property {string} restoreJob Restore job
+        * @property {string} uploadAnnotations Upload annotations
+        * @property {string} sendUserActivity Send user activity
+        * @property {string} sendException Send exception
+        * @property {string} sendTaskInfo Send task info
+
+        * @property {string} drawObject Draw object
+        * @property {string} pasteObject Paste object
+        * @property {string} copyObject Copy object
+        * @property {string} propagateObject Propagate object
+        * @property {string} dragObject Drag object
+        * @property {string} resizeObject Resize object
+        * @property {string} deleteObject Delete object
+        * @property {string} lockObject Lock object
+        * @property {string} mergeObjects Merge objects
+        * @property {string} changeAttribute Change attribute
+        * @property {string} changeLabel Change label
+
+        * @property {string} changeFrame Change frame
+        * @property {string} moveImage Move image
+        * @property {string} zoomImage Zoom image
+        * @property {string} fitImage Fit image
+        * @property {string} rotateImage Rotate image
+
+        * @property {string} undoAction Undo action
+        * @property {string} redoAction Redo action
+
+        * @property {string} pressShortcut Press shortcut
+        * @property {string} debugInfo Debug info
         * @readonly
     */
-    const LogType = {
-        pasteObject: 0,
-        changeAttribute: 1,
-        dragObject: 2,
-        deleteObject: 3,
-        pressShortcut: 4,
-        resizeObject: 5,
-        sendLogs: 6,
-        saveJob: 7,
-        jumpFrame: 8,
-        drawObject: 9,
-        changeLabel: 10,
-        sendTaskInfo: 11,
-        loadJob: 12,
-        moveImage: 13,
-        zoomImage: 14,
-        lockObject: 15,
-        mergeObjects: 16,
-        copyObject: 17,
-        propagateObject: 18,
-        undoAction: 19,
-        redoAction: 20,
-        sendUserActivity: 21,
-        sendException: 22,
-        changeFrame: 23,
-        debugInfo: 24,
-        fitImage: 25,
-        rotateImage: 26,
+    const LogType = Object.freeze({
+        loadJob: 'Load job',
+        saveJob: 'Save job',
+        restoreJob: 'Restore job',
+        uploadAnnotations: 'Upload annotations',
+        sendUserActivity: 'Send user activity',
+        sendException: 'Send exception',
+        sendTaskInfo: 'Send task info',
+
+        drawObject: 'Draw object',
+        pasteObject: 'Paste object',
+        copyObject: 'Copy object',
+        propagateObject: 'Propagate object',
+        dragObject: 'Drag object',
+        resizeObject: 'Resize object',
+        deleteObject: 'Delete object',
+        lockObject: 'Lock object',
+        mergeObjects: 'Merge objects',
+        changeAttribute: 'Change attribute',
+        changeLabel: 'Change label',
+
+        changeFrame: 'Change frame',
+        moveImage: 'Move image',
+        zoomImage: 'Zoom image',
+        fitImage: 'Fit image',
+        rotateImage: 'Rotate image',
+
+        undoAction: 'Undo action',
+        redoAction: 'Redo action',
+
+        pressShortcut: 'Press shortcut',
+        debugInfo: 'Debug info',
+    });
+
+    /**
+        * Types of actions with annotations
+        * @enum {string}
+        * @name HistoryActions
+        * @memberof module:API.cvat.enums
+        * @property {string} CHANGED_LABEL Changed label
+        * @property {string} CHANGED_ATTRIBUTES Changed attributes
+        * @property {string} CHANGED_POINTS Changed points
+        * @property {string} CHANGED_OUTSIDE Changed outside
+        * @property {string} CHANGED_OCCLUDED Changed occluded
+        * @property {string} CHANGED_ZORDER Changed z-order
+        * @property {string} CHANGED_LOCK Changed lock
+        * @property {string} CHANGED_COLOR Changed color
+        * @property {string} CHANGED_HIDDEN Changed hidden
+        * @property {string} CHANGED_SOURCE Changed source
+        * @property {string} MERGED_OBJECTS Merged objects
+        * @property {string} SPLITTED_TRACK Splitted track
+        * @property {string} GROUPED_OBJECTS Grouped objects
+        * @property {string} CREATED_OBJECTS Created objects
+        * @property {string} REMOVED_OBJECT Removed object
+        * @readonly
+    */
+    const HistoryActions = Object.freeze({
+        CHANGED_LABEL: 'Changed label',
+        CHANGED_ATTRIBUTES: 'Changed attributes',
+        CHANGED_POINTS: 'Changed points',
+        CHANGED_OUTSIDE: 'Changed outside',
+        CHANGED_OCCLUDED: 'Changed occluded',
+        CHANGED_ZORDER: 'Changed z-order',
+        CHANGED_KEYFRAME: 'Changed keyframe',
+        CHANGED_LOCK: 'Changed lock',
+        CHANGED_PINNED: 'Changed pinned',
+        CHANGED_COLOR: 'Changed color',
+        CHANGED_HIDDEN: 'Changed hidden',
+        CHANGED_SOURCE: 'Changed source',
+        MERGED_OBJECTS: 'Merged objects',
+        SPLITTED_TRACK: 'Splitted track',
+        GROUPED_OBJECTS: 'Grouped objects',
+        CREATED_OBJECTS: 'Created objects',
+        REMOVED_OBJECT: 'Removed object',
+    });
+
+    /**
+     * Enum string values.
+     * @name ModelType
+     * @memberof module:API.cvat.enums
+     * @enum {string}
+     */
+    const ModelType = {
+        DETECTOR: 'detector',
+        INTERACTOR: 'interactor',
+        TRACKER: 'tracker',
     };
+
+    /**
+        * Array of hex colors
+        * @name colors
+        * @memberof module:API.cvat.enums
+        * @type {string[]}
+        * @readonly
+    */
+    const colors = [
+        '#33ddff', '#fa3253', '#34d1b7', '#ff007c', '#ff6037', '#ddff33',
+        '#24b353', '#b83df5', '#66ff66', '#32b7fa', '#ffcc33', '#83e070',
+        '#fafa37', '#5986b3', '#8c78f0', '#ff6a4d', '#f078f0', '#2a7dd1',
+        '#b25050', '#cc3366', '#cc9933', '#aaf0d1', '#ff00cc', '#3df53d',
+        '#fa32b7', '#fa7dbb', '#ff355e', '#f59331', '#3d3df5', '#733380',
+    ];
 
     module.exports = {
         ShareFileType,
@@ -189,7 +286,11 @@
         AttributeType,
         ObjectType,
         ObjectShape,
-        VisibleState,
         LogType,
+        ModelType,
+        HistoryActions,
+        RQStatus,
+        colors,
+        Source,
     };
 })();

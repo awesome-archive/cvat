@@ -1,15 +1,22 @@
-import { AnyAction } from 'redux';
-import { AuthActionTypes } from '../actions/auth-actions';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
 
+import { boundariesActions, BoundariesActionTypes } from 'actions/boundaries-actions';
+import { AuthActions, AuthActionTypes } from 'actions/auth-actions';
 import { AuthState } from './interfaces';
 
 const defaultState: AuthState = {
     initialized: false,
     fetching: false,
     user: null,
+    authActionsFetching: false,
+    authActionsInitialized: false,
+    allowChangePassword: false,
+    showChangePasswordDialog: false,
 };
 
-export default (state = defaultState, action: AnyAction): AuthState => {
+export default function (state = defaultState, action: AuthActions | boundariesActions): AuthState {
     switch (action.type) {
         case AuthActionTypes.AUTHORIZED_SUCCESS:
             return {
@@ -53,7 +60,7 @@ export default (state = defaultState, action: AnyAction): AuthState => {
             return {
                 ...state,
                 fetching: true,
-                user: action.payload.user,
+                user: null,
             };
         case AuthActionTypes.REGISTER_SUCCESS:
             return {
@@ -66,7 +73,53 @@ export default (state = defaultState, action: AnyAction): AuthState => {
                 ...state,
                 fetching: false,
             };
+        case AuthActionTypes.CHANGE_PASSWORD:
+            return {
+                ...state,
+                fetching: true,
+            };
+        case AuthActionTypes.CHANGE_PASSWORD_SUCCESS:
+            return {
+                ...state,
+                fetching: false,
+                showChangePasswordDialog: false,
+
+            };
+        case AuthActionTypes.CHANGE_PASSWORD_FAILED:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.SWITCH_CHANGE_PASSWORD_DIALOG:
+            return {
+                ...state,
+                showChangePasswordDialog: typeof action.payload.showChangePasswordDialog === 'undefined'
+                    ? !state.showChangePasswordDialog
+                    : action.payload.showChangePasswordDialog,
+            };
+        case AuthActionTypes.LOAD_AUTH_ACTIONS:
+            return {
+                ...state,
+                authActionsFetching: true,
+            };
+        case AuthActionTypes.LOAD_AUTH_ACTIONS_SUCCESS:
+            return {
+                ...state,
+                authActionsFetching: false,
+                authActionsInitialized: true,
+                allowChangePassword: action.payload.allowChangePassword,
+            };
+        case AuthActionTypes.LOAD_AUTH_ACTIONS_FAILED:
+            return {
+                ...state,
+                authActionsFetching: false,
+                authActionsInitialized: true,
+                allowChangePassword: false,
+            };
+        case BoundariesActionTypes.RESET_AFTER_ERROR: {
+            return { ...defaultState };
+        }
         default:
             return state;
     }
-};
+}

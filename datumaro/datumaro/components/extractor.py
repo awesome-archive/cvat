@@ -7,6 +7,11 @@ from collections import namedtuple
 from enum import Enum
 import numpy as np
 
+import attr
+from attr import attrs, attrib
+
+from datumaro.util.image import Image
+from datumaro.util.attrs_util import not_empty, default_if_none
 
 AnnotationType = Enum('AnnotationType',
     [
@@ -19,64 +24,64 @@ AnnotationType = Enum('AnnotationType',
         'caption',
     ])
 
+_COORDINATE_ROUNDING_DIGITS = 2
+
+@attrs
 class Annotation:
-    # pylint: disable=redefined-builtin
-    def __init__(self, id=None, type=None, attributes=None, group=None):
-        if id is not None:
-            id = int(id)
-        self.id = id
+    id = attrib(converter=int, default=0, kw_only=True)
+    attributes = attrib(converter=dict, factory=dict, kw_only=True)
+    group = attrib(converter=int, default=0, kw_only=True)
 
-        assert type in AnnotationType
-        self.type = type
+    def __attrs_post_init__(self):
+        assert isinstance(self.type, AnnotationType)
 
-        if attributes is None:
-            attributes = {}
-        else:
-            attributes = dict(attributes)
-        self.attributes = attributes
+    @property
+    def type(self):
+        return self._type # must be set in subclasses
 
-        if group is not None:
-            group = int(group)
-        self.group = group
-    # pylint: enable=redefined-builtin
+    def wrap(item, **kwargs):
+        return attr.evolve(item, **kwargs)
 
-    def __eq__(self, other):
-        if not isinstance(other, Annotation):
-            return False
-        return \
-            (self.id == other.id) and \
-            (self.type == other.type) and \
-            (self.attributes == other.attributes) and \
-            (self.group == other.group)
-
+@attrs
 class Categories:
-    def __init__(self, attributes=None):
-        if attributes is None:
-            attributes = set()
-        else:
-            if not isinstance(attributes, set):
-                attributes = set(attributes)
-            for attr in attributes:
-                assert isinstance(attr, str)
-        self.attributes = attributes
+    attributes = attrib(factory=set, validator=default_if_none(set),
+        kw_only=True)
 
-    def __eq__(self, other):
-        if not isinstance(other, Categories):
-            return False
-        return \
-            (self.attributes == other.attributes)
-
+@attrs
 class LabelCategories(Categories):
     Category = namedtuple('Category', ['name', 'parent', 'attributes'])
 
-    def __init__(self, items=None, attributes=None):
-        super().__init__(attributes=attributes)
+    items = attrib(factory=list, validator=default_if_none(list))
+    _indices = attrib(factory=dict, init=False, eq=False)
 
-        if items is None:
-            items = []
-        self.items = items
+    @classmethod
+    def from_iterable(cls, iterable):
+        """Generation of LabelCategories from iterable object
 
-        self._indices = {}
+        Args:
+            iterable ([type]): This iterable object can be:
+            1)simple str - will generate one Category with str as name
+            2)list of str - will interpreted as list of Category names
+            3)list of positional argumetns - will generate Categories
+            with this arguments
+
+
+        Returns:
+            LabelCategories: LabelCategories object
+        """
+        temp_categories = cls()
+
+        if isinstance(iterable, str):
+            iterable = [[iterable]]
+
+        for category in iterable:
+            if isinstance(category, str):
+                category = [category]
+            temp_categories.add(*category)
+
+        return temp_categories
+
+    def __attrs_post_init__(self):
         self._reindex()
 
     def _reindex(self):
@@ -95,10 +100,13 @@ class LabelCategories(Categories):
                 attributes = set(attributes)
             for attr in attributes:
                 assert isinstance(attr, str)
+        if parent is None:
+            parent = ''
 
         index = len(self.items)
         self.items.append(self.Category(name, parent, attributes))
         self._indices[name] = index
+        return index
 
     def find(self, name):
         index = self._indices.get(name)
@@ -106,46 +114,23 @@ class LabelCategories(Categories):
             return index, self.items[index]
         return index, None
 
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return \
-            (self.items == other.items)
+@attrs
+class Label(Annotation):
+    _type = AnnotationType.label
+    label = attrib(converter=int)
 
-class LabelObject(Annotation):
-    # pylint: disable=redefined-builtin
-    def __init__(self, label=None,
-            id=None, attributes=None, group=None):
-        super().__init__(id=id, type=AnnotationType.label,
-            attributes=attributes, group=group)
-        self.label = label
-    # pylint: enable=redefined-builtin
-
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return \
-            (self.label == other.label)
-
+@attrs(eq=False)
 class MaskCategories(Categories):
-    def __init__(self, colormap=None, inverse_colormap=None, attributes=None):
-        super().__init__(attributes=attributes)
-
-        # colormap: label id -> color
-        if colormap is None:
-            colormap = {}
-        self.colormap = colormap
-        self._inverse_colormap = inverse_colormap
+    colormap = attrib(factory=dict, validator=default_if_none(dict))
+    _inverse_colormap = attrib(default=None,
+        validator=attr.validators.optional(dict))
 
     @property
     def inverse_colormap(self):
         from datumaro.util.mask_tools import invert_colormap
         if self._inverse_colormap is None:
             if self.colormap is not None:
-                try:
-                    self._inverse_colormap = invert_colormap(self.colormap)
-                except Exception:
-                    pass
+                self._inverse_colormap = invert_colormap(self.colormap)
         return self._inverse_colormap
 
     def __eq__(self, other):
@@ -157,19 +142,13 @@ class MaskCategories(Categories):
                 return False
         return True
 
-class MaskObject(Annotation):
-    # pylint: disable=redefined-builtin
-    def __init__(self, image=None, label=None,
-            id=None, attributes=None, group=None):
-        super().__init__(id=id, type=AnnotationType.mask,
-            attributes=attributes, group=group)
-        self._image = image
-        self._label = label
-    # pylint: enable=redefined-builtin
-
-    @property
-    def label(self):
-        return self._label
+@attrs(eq=False)
+class Mask(Annotation):
+    _type = AnnotationType.mask
+    _image = attrib()
+    label = attrib(converter=attr.converters.optional(int),
+        default=None, kw_only=True)
+    z_order = attrib(converter=int, default=0, kw_only=True)
 
     @property
     def image(self):
@@ -177,25 +156,123 @@ class MaskObject(Annotation):
             return self._image()
         return self._image
 
-    def painted_data(self, colormap):
-        raise NotImplementedError()
+    def as_class_mask(self, label_id=None):
+        if label_id is None:
+            label_id = self.label
+        return self.image * label_id
 
-    def area(self):
-        raise NotImplementedError()
+    def as_instance_mask(self, instance_id):
+        return self.image * instance_id
 
-    def extract(self, class_id):
-        raise NotImplementedError()
+    def get_area(self):
+        return np.count_nonzero(self.image)
 
-    def bbox(self):
-        raise NotImplementedError()
+    def get_bbox(self):
+        from datumaro.util.mask_tools import find_mask_bbox
+        return find_mask_bbox(self.image)
+
+    def paint(self, colormap):
+        from datumaro.util.mask_tools import paint_mask
+        return paint_mask(self.as_class_mask(), colormap)
 
     def __eq__(self, other):
         if not super().__eq__(other):
             return False
         return \
             (self.label == other.label) and \
-            (self.image is not None and other.image is not None and \
-                np.all(self.image == other.image))
+            (self.z_order == other.z_order) and \
+            (np.array_equal(self.image, other.image))
+
+@attrs(eq=False)
+class RleMask(Mask):
+    rle = attrib()
+    _image = attrib(default=attr.Factory(
+        lambda self: self._lazy_decode(self.rle),
+        takes_self=True), init=False)
+
+    @staticmethod
+    def _lazy_decode(rle):
+        from pycocotools import mask as mask_utils
+        return lambda: mask_utils.decode(rle).astype(np.bool)
+
+    def get_area(self):
+        from pycocotools import mask as mask_utils
+        return mask_utils.area(self.rle)
+
+    def get_bbox(self):
+        from pycocotools import mask as mask_utils
+        return mask_utils.toBbox(self.rle)
+
+    def __eq__(self, other):
+        if not isinstance(other, __class__):
+            return super().__eq__(other)
+        return self.rle == other.rle
+
+class CompiledMask:
+    @staticmethod
+    def from_instance_masks(instance_masks,
+            instance_ids=None, instance_labels=None):
+        from datumaro.util.mask_tools import merge_masks
+
+        if instance_ids is not None:
+            assert len(instance_ids) == len(instance_masks)
+        else:
+            instance_ids = [None] * len(instance_masks)
+
+        if instance_labels is not None:
+            assert len(instance_labels) == len(instance_masks)
+        else:
+            instance_labels = [None] * len(instance_masks)
+
+        instance_masks = sorted(
+            zip(instance_masks, instance_ids, instance_labels),
+            key=lambda m: m[0].z_order)
+
+        instance_mask = [m.as_instance_mask(id if id is not None else 1 + idx)
+            for idx, (m, id, _) in enumerate(instance_masks)]
+        instance_mask = merge_masks(instance_mask)
+
+        cls_mask = [m.as_class_mask(c) for m, _, c in instance_masks]
+        cls_mask = merge_masks(cls_mask)
+        return __class__(class_mask=cls_mask, instance_mask=instance_mask)
+
+    def __init__(self, class_mask=None, instance_mask=None):
+        self._class_mask = class_mask
+        self._instance_mask = instance_mask
+
+    @staticmethod
+    def _get_image(image):
+        if callable(image):
+            return image()
+        return image
+
+    @property
+    def class_mask(self):
+        return self._get_image(self._class_mask)
+
+    @property
+    def instance_mask(self):
+        return self._get_image(self._instance_mask)
+
+    @property
+    def instance_count(self):
+        return int(self.instance_mask.max())
+
+    def get_instance_labels(self):
+        class_shift = 16
+        m = (self.class_mask.astype(np.uint32) << class_shift) \
+            + self.instance_mask.astype(np.uint32)
+        keys = np.unique(m)
+        instance_labels = {k & ((1 << class_shift) - 1): k >> class_shift
+            for k in keys if k & ((1 << class_shift) - 1) != 0
+        }
+        return instance_labels
+
+    def extract(self, instance_id):
+        return self.instance_mask == instance_id
+
+    def lazy_extract(self, instance_id):
+        return lambda: self.extract(instance_id)
 
 def compute_iou(bbox_a, bbox_b):
     aX, aY, aW, aH = bbox_a
@@ -215,25 +292,20 @@ def compute_iou(bbox_a, bbox_b):
 
     return intersection / max(1.0, union)
 
-class ShapeObject(Annotation):
-    # pylint: disable=redefined-builtin
-    def __init__(self, type, points=None, label=None,
-            id=None, attributes=None, group=None):
-        super().__init__(id=id, type=type,
-            attributes=attributes, group=group)
-        self.points = points
-        self.label = label
-    # pylint: enable=redefined-builtin
+@attrs
+class _Shape(Annotation):
+    points = attrib(converter=lambda x:
+        [round(p, _COORDINATE_ROUNDING_DIGITS) for p in x])
+    label = attrib(converter=attr.converters.optional(int),
+        default=None, kw_only=True)
+    z_order = attrib(converter=int, default=0, kw_only=True)
 
-    def area(self):
-        raise NotImplementedError()
-
-    def get_polygon(self):
+    def get_area(self):
         raise NotImplementedError()
 
     def get_bbox(self):
-        points = self.get_points()
-        if not self.points:
+        points = self.points
+        if not points:
             return None
 
         xs = [p for p in points[0::2]]
@@ -244,64 +316,43 @@ class ShapeObject(Annotation):
         y1 = max(ys)
         return [x0, y0, x1 - x0, y1 - y0]
 
-    def get_points(self):
-        return self.points
+@attrs
+class PolyLine(_Shape):
+    _type = AnnotationType.polyline
 
-    def get_mask(self):
-        raise NotImplementedError()
+    def as_polygon(self):
+        return self.points[:]
 
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return \
-            (self.points == other.points) and \
-            (self.label == other.label)
-
-class PolyLineObject(ShapeObject):
-    # pylint: disable=redefined-builtin
-    def __init__(self, points=None,
-            label=None, id=None, attributes=None, group=None):
-        super().__init__(type=AnnotationType.polyline,
-            points=points, label=label,
-            id=id, attributes=attributes, group=group)
-    # pylint: enable=redefined-builtin
-
-    def get_polygon(self):
-        return self.get_points()
-
-    def area(self):
+    def get_area(self):
         return 0
 
-class PolygonObject(ShapeObject):
-    # pylint: disable=redefined-builtin
-    def __init__(self, points=None,
-            label=None, id=None, attributes=None, group=None):
-        if points is not None:
-            assert len(points) % 2 == 0 and 3 <= len(points) // 2, "Wrong polygon points: %s" % points
-        super().__init__(type=AnnotationType.polygon,
-            points=points, label=label,
-            id=id, attributes=attributes, group=group)
-    # pylint: enable=redefined-builtin
+@attrs
+class Polygon(_Shape):
+    _type = AnnotationType.polygon
 
-    def get_polygon(self):
-        return self.get_points()
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+        # keep the message on a single line to produce informative output
+        assert len(self.points) % 2 == 0 and 3 <= len(self.points) // 2, "Wrong polygon points: %s" % self.points
 
-    def area(self):
+    def get_area(self):
         import pycocotools.mask as mask_utils
 
-        _, _, w, h = self.get_bbox()
-        rle = mask_utils.frPyObjects([self.get_points()], h, w)
-        area = mask_utils.area(rle)
+        x, y, w, h = self.get_bbox()
+        rle = mask_utils.frPyObjects([self.points], y + h, x + w)
+        area = mask_utils.area(rle)[0]
         return area
 
-class BboxObject(ShapeObject):
-    # pylint: disable=redefined-builtin
-    def __init__(self, x=0, y=0, w=0, h=0,
-            label=None, id=None, attributes=None, group=None):
-        super().__init__(type=AnnotationType.bbox,
-            points=[x, y, x + w, y + h], label=label,
-            id=id, attributes=attributes, group=group)
-    # pylint: enable=redefined-builtin
+@attrs
+class Bbox(_Shape):
+    _type = AnnotationType.bbox
+
+    # will be overridden by attrs, then will be overridden again by us
+    # attrs' method will be renamed to __attrs_init__
+    def __init__(self, x, y, w, h, *args, **kwargs):
+        kwargs.pop('points', None) # comes from wrap()
+        self.__attrs_init__([x, y, x + w, y + h], *args, **kwargs)
+    __actual_init__ = __init__ # save pointer
 
     @property
     def x(self):
@@ -319,13 +370,13 @@ class BboxObject(ShapeObject):
     def h(self):
         return self.points[3] - self.points[1]
 
-    def area(self):
+    def get_area(self):
         return self.w * self.h
 
     def get_bbox(self):
         return [self.x, self.y, self.w, self.h]
 
-    def get_polygon(self):
+    def as_polygon(self):
         x, y, w, h = self.get_bbox()
         return [
             x, y,
@@ -337,149 +388,124 @@ class BboxObject(ShapeObject):
     def iou(self, other):
         return compute_iou(self.get_bbox(), other.get_bbox())
 
+    def wrap(item, **kwargs):
+        d = {'x': item.x, 'y': item.y, 'w': item.w, 'h': item.h}
+        d.update(kwargs)
+        return attr.evolve(item, **d)
+
+assert not hasattr(Bbox, '__attrs_init__') # hopefully, it will be supported
+setattr(Bbox, '__attrs_init__', Bbox.__init__)
+setattr(Bbox, '__init__', Bbox.__actual_init__)
+
+@attrs
 class PointsCategories(Categories):
-    Category = namedtuple('Category', ['labels', 'adjacent'])
+    Category = namedtuple('Category', ['labels', 'joints'])
 
-    def __init__(self, items=None, attributes=None):
-        super().__init__(attributes=attributes)
+    items = attrib(factory=dict, validator=default_if_none(dict))
 
-        if items is None:
-            items = {}
-        self.items = items
+    @classmethod
+    def from_iterable(cls, iterable):
+        """Generation of PointsCategories from iterable object
 
-    def add(self, label_id, labels=None, adjacent=None):
+        Args:
+            iterable ([type]): This iterable object can be:
+            1)simple int - will generate one Category with int as label
+            2)list of int - will interpreted as list of Category labels
+            3)list of positional argumetns - will generate Categories
+            with this arguments
+
+        Returns:
+            PointsCategories: PointsCategories object
+        """
+        temp_categories = cls()
+
+        if isinstance(iterable, int):
+            iterable = [[iterable]]
+
+        for category in iterable:
+            if isinstance(category, int):
+                category = [category]
+            temp_categories.add(*category)
+        return temp_categories
+
+    def add(self, label_id, labels=None, joints=None):
         if labels is None:
             labels = []
-        if adjacent is None:
-            adjacent = []
-        self.items[label_id] = self.Category(labels, set(adjacent))
+        if joints is None:
+            joints = []
+        joints = set(map(tuple, joints))
+        self.items[label_id] = self.Category(labels, joints)
 
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return \
-            (self.items == other.items)
-
-class PointsObject(ShapeObject):
+@attrs
+class Points(_Shape):
     Visibility = Enum('Visibility', [
         ('absent', 0),
         ('hidden', 1),
         ('visible', 2),
     ])
+    _type = AnnotationType.points
 
-    # pylint: disable=redefined-builtin
-    def __init__(self, points=None, visibility=None, label=None,
-            id=None, attributes=None, group=None):
-        if points is not None:
-            assert len(points) % 2 == 0
-
-            if visibility is not None:
-                assert len(visibility) == len(points) // 2
-                for i, v in enumerate(visibility):
-                    if not isinstance(v, self.Visibility):
-                        visibility[i] = self.Visibility(v)
-            else:
-                visibility = []
-                for _ in range(len(points) // 2):
-                    visibility.append(self.Visibility.absent)
-
-        super().__init__(type=AnnotationType.points,
-            points=points, label=label,
-            id=id, attributes=attributes, group=group)
-
+    visibility = attrib(type=list, default=None)
+    @visibility.validator
+    def _visibility_validator(self, attribute, visibility):
+        if visibility is None:
+            visibility = [self.Visibility.visible] * (len(self.points) // 2)
+        else:
+            for i, v in enumerate(visibility):
+                if not isinstance(v, self.Visibility):
+                    visibility[i] = self.Visibility(v)
+        assert len(visibility) == len(self.points) // 2
         self.visibility = visibility
-    # pylint: enable=redefined-builtin
 
-    def area(self):
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+        assert len(self.points) % 2 == 0, self.points
+
+    def get_area(self):
         return 0
 
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return \
-            (self.visibility == other.visibility)
+    def get_bbox(self):
+        xs = [p for p, v in zip(self.points[0::2], self.visibility)
+            if v != __class__.Visibility.absent]
+        ys = [p for p, v in zip(self.points[1::2], self.visibility)
+            if v != __class__.Visibility.absent]
+        x0 = min(xs, default=0)
+        x1 = max(xs, default=0)
+        y0 = min(ys, default=0)
+        y1 = max(ys, default=0)
+        return [x0, y0, x1 - x0, y1 - y0]
 
-class CaptionObject(Annotation):
-    # pylint: disable=redefined-builtin
-    def __init__(self, caption=None,
-            id=None, attributes=None, group=None):
-        super().__init__(id=id, type=AnnotationType.caption,
-            attributes=attributes, group=group)
+@attrs
+class Caption(Annotation):
+    _type = AnnotationType.caption
+    caption = attrib(converter=str)
 
-        if caption is None:
-            caption = ''
-        self.caption = caption
-    # pylint: enable=redefined-builtin
-
-    def __eq__(self, other):
-        if not super().__eq__(other):
-            return False
-        return \
-            (self.caption == other.caption)
-
+@attrs
 class DatasetItem:
-    # pylint: disable=redefined-builtin
-    def __init__(self, id, annotations=None,
-            subset=None, path=None, image=None):
-        assert id is not None
-        if not isinstance(id, str):
-            id = str(id)
-        assert len(id) != 0
-        self._id = id
+    id = attrib(converter=lambda x: str(x).replace('\\', '/'),
+        type=str, validator=not_empty)
+    annotations = attrib(factory=list, validator=default_if_none(list))
+    subset = attrib(default='', validator=default_if_none(str))
+    path = attrib(factory=list, validator=default_if_none(list))
 
-        if subset is None:
-            subset = ''
-        assert isinstance(subset, str)
-        self._subset = subset
+    image = attrib(type=Image, default=None)
+    @image.validator
+    def _image_validator(self, attribute, image):
+        if callable(image) or isinstance(image, np.ndarray):
+            image = Image(data=image)
+        elif isinstance(image, str):
+            image = Image(path=image)
+        assert image is None or isinstance(image, Image)
+        self.image = image
 
-        if path is None:
-            path = []
-        self._path = path
-
-        if annotations is None:
-            annotations = []
-        self._annotations = annotations
-
-        self._image = image
-    # pylint: enable=redefined-builtin
-
-    @property
-    def id(self):
-        return self._id
-
-    @property
-    def subset(self):
-        return self._subset
-
-    @property
-    def path(self):
-        return self._path
-
-    @property
-    def annotations(self):
-        return self._annotations
-
-    @property
-    def image(self):
-        if callable(self._image):
-            return self._image()
-        return self._image
+    attributes = attrib(factory=dict, validator=default_if_none(dict))
 
     @property
     def has_image(self):
-        return self._image is not None
+        return self.image is not None
 
-    def __eq__(self, other):
-        if not isinstance(other, __class__):
-            return False
-        return \
-            (self.id == other.id) and \
-            (self.subset == other.subset) and \
-            (self.annotations == other.annotations) and \
-            (self.path == other.path) and \
-            (self.has_image == other.has_image) and \
-            (self.has_image and np.all(self.image == other.image) or \
-                not self.has_image)
+    def wrap(item, **kwargs):
+        return attr.evolve(item, **kwargs)
 
 class IExtractor:
     def __iter__(self):
@@ -500,9 +526,6 @@ class IExtractor:
     def select(self, pred):
         raise NotImplementedError()
 
-    def get(self, item_id, subset=None, path=None):
-        raise NotImplementedError()
-
 class _DatasetFilter:
     def __init__(self, iterable, predicate):
         self.iterable = iterable
@@ -512,9 +535,9 @@ class _DatasetFilter:
         return filter(self.predicate, self.iterable)
 
 class _ExtractorBase(IExtractor):
-    def __init__(self, length=None):
+    def __init__(self, length=None, subsets=None):
         self._length = length
-        self._subsets = None
+        self._subsets = subsets
 
     def _init_cache(self):
         subsets = set()
@@ -544,9 +567,12 @@ class _ExtractorBase(IExtractor):
         else:
             raise Exception("Unknown subset '%s' requested" % name)
 
+    def transform(self, method, *args, **kwargs):
+        return method(self, *args, **kwargs)
+
 class DatasetIteratorWrapper(_ExtractorBase):
-    def __init__(self, iterable, categories):
-        super().__init__(length=None)
+    def __init__(self, iterable, categories, subsets=None):
+        super().__init__(length=None, subsets=subsets)
         self._iterable = iterable
         self._categories = categories
 
@@ -558,7 +584,7 @@ class DatasetIteratorWrapper(_ExtractorBase):
 
     def select(self, pred):
         return DatasetIteratorWrapper(
-            _DatasetFilter(self, pred), self.categories())
+            _DatasetFilter(self, pred), self.categories(), self.subsets())
 
 class Extractor(_ExtractorBase):
     def __init__(self, length=None):
@@ -569,7 +595,51 @@ class Extractor(_ExtractorBase):
 
     def select(self, pred):
         return DatasetIteratorWrapper(
-            _DatasetFilter(self, pred), self.categories())
-
+            _DatasetFilter(self, pred), self.categories(), self.subsets())
 
 DEFAULT_SUBSET_NAME = 'default'
+
+
+class SourceExtractor(Extractor):
+    def __init__(self, length=None, subset=None):
+        super().__init__(length=length)
+
+        if subset == DEFAULT_SUBSET_NAME:
+            subset = None
+        self._subset = subset
+
+    def subsets(self):
+        return [self._subset]
+
+    def get_subset(self, name):
+        if name != self._subset:
+            return None
+        return self
+
+class Importer:
+    @classmethod
+    def detect(cls, path):
+        raise NotImplementedError()
+
+    def __call__(self, path, **extra_params):
+        raise NotImplementedError()
+
+class Transform(Extractor):
+    @staticmethod
+    def wrap_item(item, **kwargs):
+        return item.wrap(**kwargs)
+
+    def __init__(self, extractor):
+        super().__init__()
+
+        self._extractor = extractor
+
+    def __iter__(self):
+        for item in self._extractor:
+            yield self.transform_item(item)
+
+    def categories(self):
+        return self._extractor.categories()
+
+    def transform_item(self, item):
+        raise NotImplementedError()

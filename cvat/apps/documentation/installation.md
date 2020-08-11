@@ -3,10 +3,19 @@
   - [Windows 10](#windows-10)
   - [Mac OS Mojave](#mac-os-mojave)
   - [Advanced topics](#advanced-topics)
+    - [Deploying CVAT behind a proxy](#deploying-cvat-behind-a-proxy)
     - [Additional components](#additional-components)
+    - [Semi-automatic and automatic annotation](#semi-automatic-and-automatic-annotation)
     - [Stop all containers](#stop-all-containers)
     - [Advanced settings](#advanced-settings)
     - [Share path](#share-path)
+    - [Serving over HTTPS](#serving-over-https)
+      - [Prerequisites](#prerequisites)
+      - [Roadmap](#roadmap)
+      - [Step-by-step instructions](#step-by-step-instructions)
+        - [1. Make the proxy listen on standard port 80 and prepare nginx for the ACME challenge via webroot method](#1-make-the-proxy-listen-on-standard-port-80-and-prepare-nginx-for-the-acme-challenge-via-webroot-method)
+        - [2. Setting up HTTPS with `acme.sh` helper](#2-setting-up-https-with-acmesh-helper)
+          - [Create certificate files using an ACME challenge on docker host](#create-certificate-files-using-an-acme-challenge-on-docker-host)
 
 # Quick installation guide
 
@@ -27,7 +36,7 @@ server. Proxy is an advanced topic and it is not covered by the guide.
 
     ```sh
     sudo apt-get update
-    sudo apt-get install -y \
+    sudo apt-get --no-install-recommends install -y \
       apt-transport-https \
       ca-certificates \
       curl \
@@ -39,7 +48,7 @@ server. Proxy is an advanced topic and it is not covered by the guide.
       $(lsb_release -cs) \
       stable"
     sudo apt-get update
-    sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+    sudo apt-get --no-install-recommends install -y docker-ce docker-ce-cli containerd.io
     ```
 
 -   Perform [post-installation steps](https://docs.docker.com/install/linux/linux-postinstall/)
@@ -57,15 +66,15 @@ server. Proxy is an advanced topic and it is not covered by the guide.
     defining and running multi-container docker applications.
 
     ```bash
-    sudo apt-get install -y python3-pip
-    sudo python3 -m pip install docker-compose
+    sudo apt-get --no-install-recommends install -y python3-pip
+    sudo python3 -m pip install setuptools docker-compose
     ```
 
 -   Clone _CVAT_ source code from the
     [GitHub repository](https://github.com/opencv/cvat).
 
     ```bash
-    sudo apt-get install -y git
+    sudo apt-get --no-install-recommends install -y git
     git clone https://github.com/opencv/cvat
     cd cvat
     ```
@@ -100,10 +109,10 @@ server. Proxy is an advanced topic and it is not covered by the guide.
     install it as well. Type commands below in a terminal window:
 
     ```sh
-    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+    curl https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
     sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list'
     sudo apt-get update
-    sudo apt-get install -y google-chrome-stable
+    sudo apt-get --no-install-recommends install -y google-chrome-stable
     ```
 
 -   Open the installed Google Chrome browser and go to [localhost:8080](http://localhost:8080).
@@ -112,10 +121,14 @@ server. Proxy is an advanced topic and it is not covered by the guide.
     [CVAT user's guide](/cvat/apps/documentation/user_guide.md) for more details.
 
 ## Windows 10
--   Download [Docker for Windows](https://download.docker.com/win/stable/Docker%20for%20Windows%20Installer.exe).
-    Double-click `Docker for Windows Installer` to run the installer. More
-    instructions can be found [here](https://docs.docker.com/docker-for-windows/install/). Note:
-    Docker Desktop requires Windows 10 Pro or Enterprise version 14393 to run.
+-   Install WSL2 (Windows subsystem for Linux) refer to [this official guide](https://docs.microsoft.com/windows/wsl/install-win10).
+    WSL2 requires Windows 10, version 2004 or higher. Note: you may not install any Linux distribution unless necessary.
+
+-   Download and install [Docker Desktop for Windows](https://download.docker.com/win/stable/Docker%20Desktop%20Installer.exe).
+    Double-click `Docker for Windows Installer` to run the installer.
+    More instructions can be found [here](https://docs.docker.com/docker-for-windows/install/).
+    Official guide for docker WSL2 backend can be found
+    [here](https://docs.docker.com/docker-for-windows/wsl/). Note: check that using exaclty WSL2 backend for docker.
 
 -   Download and install
     [Git for Windows](https://github.com/git-for-windows/git/releases/download/v2.21.0.windows.1/Git-2.21.0-64-bit.exe).
@@ -233,22 +246,65 @@ server. Proxy is an advanced topic and it is not covered by the guide.
 
 ## Advanced topics
 
+### Deploying CVAT behind a proxy
+If you deploy CVAT behind a proxy and do not plan to use any of [serverless functions](#semi-automatic-and-automatic-annotation)
+for automatic annotation, the exported environment variables
+`http_proxy`, `https_proxy` and `no_proxy` should be enough to build images.
+Otherwise please create or edit the file `~/.docker/config.json` in the home directory of the user
+which starts containers and add JSON such as the following:
+```json
+{
+ "proxies":
+ {
+   "default":
+   {
+     "httpProxy": "http://proxy_server:port",
+     "httpsProxy": "http://proxy_server:port",
+     "noProxy": "*.test.example.com,.example2.com"
+   }
+ }
+}
+```
+These environment variables are set automatically within any container.
+Please see the [Docker documentation](https://docs.docker.com/network/proxy/) for more details.
+
 ### Additional components
 
-- [Auto annotation using DL models in OpenVINO toolkit format](/cvat/apps/auto_annotation/README.md)
 - [Analytics: management and monitoring of data annotation team](/components/analytics/README.md)
-- [TF Object Detection API: auto annotation](/components/tf_annotation/README.md)
-- [Support for NVIDIA GPUs](/components/cuda/README.md)
-- [Semi-automatic segmentation with Deep Extreme Cut](/cvat/apps/dextr_segmentation/README.md)
 
 ```bash
-# Build and run containers with CUDA and OpenVINO support
-# IMPORTANT: need to download OpenVINO package before running the command
-docker-compose -f docker-compose.yml -f components/cuda/docker-compose.cuda.yml -f components/openvino/docker-compose.openvino.yml up -d --build
-
 # Build and run containers with Analytics component support:
 docker-compose -f docker-compose.yml -f components/analytics/docker-compose.analytics.yml up -d --build
 ```
+
+### Semi-automatic and automatic annotation
+
+- You have to install `nuctl` command line tool to build and deploy serverless
+functions. Download [the latest release](https://github.com/nuclio/nuclio/releases).
+- Create `cvat` project inside nuclio dashboard where you will deploy new
+serverless functions and deploy a couple of DL models. Commands below should
+be run only after CVAT has been installed using docker-compose because it
+runs nuclio dashboard which manages all serverless functions.
+
+```bash
+nuctl create project cvat
+```
+
+```bash
+nuctl deploy --project-name cvat \
+    --path serverless/openvino/dextr/nuclio \
+    --volume `pwd`/serverless/openvino/common:/opt/nuclio/common \
+    --platform local
+```
+
+```bash
+nuctl deploy --project-name cvat \
+    --path serverless/openvino/omz/public/yolo-v3-tf/nuclio \
+    --volume `pwd`/serverless/openvino/common:/opt/nuclio/common \
+    --platform local
+```
+
+Note: see [deploy.sh](/serverless/deploy.sh) script for more examples.
 
 ### Stop all containers
 
@@ -261,9 +317,8 @@ docker-compose down
 
 ### Advanced settings
 
-If you want to access you instance of CVAT outside of your localhost you should
-specify the [ALLOWED_HOSTS](https://docs.djangoproject.com/en/2.0/ref/settings/#allowed-hosts)
-environment variable. The best way to do that is to create
+If you want to access your instance of CVAT outside of your localhost you should
+specify the `CVAT_HOST` environment variable. The best way to do that is to create
 [docker-compose.override.yml](https://docs.docker.com/compose/extends/) and put
 all your extra settings here.
 
@@ -271,11 +326,9 @@ all your extra settings here.
 version: "2.3"
 
 services:
-  cvat:
+  cvat_proxy:
     environment:
-      ALLOWED_HOSTS: .example.com
-    ports:
-      - "80:8080"
+      CVAT_HOST: .example.com
 ```
 
 Please don't forget include this file to docker-compose commands using the `-f`
@@ -308,3 +361,239 @@ volumes:
 You can change the share device path to your actual share. For user convenience
 we have defined the environment variable $CVAT_SHARE_URL. This variable
 contains a text (url for example) which is shown in the client-share browser.
+
+### Serving over HTTPS
+
+We will add [letsencrypt.org](https://letsencrypt.org/) issued certificate to secure
+our server connection.
+
+#### Prerequisites
+
+We assume that
+
+- you have sudo access on your server machine,
+- you have an IP address to use for remote access, and
+- that the local CVAT installation works on your server.
+
+If this is not the case, please complete the steps in the installation manual first.
+
+#### Roadmap
+
+We will go through the following sequence of steps to get CVAT over HTTPS:
+
+- Setup containers on default 80/tcp port. Checkin and then down the containers.
+- Configure Nginx to pass one of the [ACME challenges](https://letsencrypt.org/docs/challenge-types/) - webroot.
+- Create the certificate files using [acme.sh](https://github.com/acmesh-official/acme.sh).
+- Reconfigure Nginx to serve over HTTPS and map CVAT to Docker Compose port 443.
+
+#### Step-by-step instructions
+
+##### 1. Make the proxy listen on standard port 80 and prepare nginx for the ACME challenge via webroot method
+
+> The configuration assumes that on the docker host there will be only one instance of the CVAT site listens for incoming connections on 80 and 443 port. Also redirecting everything that does not concern renewal of certificates to the site via secure HTTPS protocol.
+
+Let's assume the server will be at `my-cvat-server.org`.
+
+Point you shell in cvat repository directory, usually `cd $HOME/cvat`:
+
+Add the following into your `docker-compose.override.yml`, replacing `my-cvat-server.org` with your own IP address. This file lives in the same directory as `docker-compose.yml`.
+
+Create enough directories for letsencrypt webroot operation and acme folder passthrougth.
+
+ and restart containers with a new configuration updated in `docker-compose.override.yml`
+
+```bash
+# on the docker host
+
+# this will create ~/.acme.sh directory
+curl https://get.acme.sh | sh
+
+# create a subdirs for acme-challenge webroot manually
+mkdir -p $HOME/cvat/letsencrypt-webroot/.well-known/acme-challenge
+```
+
+```yaml
+# docker-compose.override.yml
+version: "2.3"
+
+services:
+  cvat_proxy:
+    environment:
+      CVAT_HOST: my-cvat-server.org
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./letsencrypt-webroot:/var/tmp/letsencrypt-webroot
+      - /root/.acme.sh:/root/.acme.sh
+
+  cvat:
+    environment:
+      ALLOWED_HOSTS: '*'
+```
+
+This will enable serving `http://my-cvat-server.org/.well-known/acme-challenge/`
+route from `/var/tmp/letsencrypt-webroot` directory on the container's filesystem which is bind mounted from docker host `$HOME/cvat/letsencrypt-webroot`. That volume needed for issue and renewing certificates only.
+
+Update a CVAT site proxy template `$HOME/cvat/cvat_proxy/conf.d/cvat.conf.template` on docker(system) host. Site config updates from this template each time `cvat_proxy` container start.
+
+Add a location to server with `server_name ${CVAT_HOST};` ahead others:
+
+```
+    location ^~ /.well-known/acme-challenge/ {
+      default_type "text/plain";
+      root /var/tmp/letsencrypt-webroot;
+    }
+```
+You can use the [Nginx quickstart guide](http://nginx.org/en/docs/beginners_guide.html) for reference.
+
+
+```bash
+# on the docker host
+docker-compose down
+docker-compose up -d
+```
+
+Your server should still be visible (and unsecured) at `http://my-cvat-server.org`
+but you won't see any behavior changes.
+
+At this point your deployment is up and running, ready for run acme-challenge.
+
+##### 2. Setting up HTTPS with `acme.sh` helper
+
+There are multiple approaches. First one is to use helper on docker host.
+
+In a our approach
+* it is easier to setup automatic certificate updates and (than it can be done in the container).
+* leave certificates in safe place on docker host (protect from `docker-compose down` cleanup)
+* no unnecessary certificate files copying between container and host.
+
+###### Create certificate files using an ACME challenge on docker host
+
+**Prepare certificates.**
+
+Point you shell in cvat repository directory, usually `cd $HOME/cvat` on docker host.
+
+> Certificate issue and updates should be on docker host in this approach.
+
+Let’s Encrypt provides rate limits to ensure fair usage by as many people as possible. They recommend utilize their staging environment instead of the production API during testing. So first try to get a test certificate.
+
+```
+~/.acme.sh/acme.sh --issue --staging -d my-cvat-server.org -w $HOME/cvat/letsencrypt-webroot --debug
+```
+
+> Debug note: nginx server logs for cvat_proxy are not saved in container. You shall see it at docker host by with: `docker logs cvat_proxy`.
+
+If certificates is issued a successful we should test a renew:
+
+```
+~/.acme.sh/acme.sh --renew --force --staging -d my-cvat-server.org -w $HOME/cvat/letsencrypt-webroot --debug
+```
+If success:
+
+* remove test certificate
+* issue a production certificate
+* create a cron job for user (`crontab -e`).
+
+```
+~/.acme.sh/acme.sh --remove -d my-cvat-server.org --debug
+rm -r /root/.acme.sh/my-cvat-server.org
+
+~/.acme.sh/acme.sh --issue -d my-cvat-server.org -w $HOME/cvat/letsencrypt-webroot --debug
+
+~/.acme.sh/acme.sh --install-cronjob
+```
+
+Down the cvat_proxy container for setup https with issued certificates.
+
+```bash
+docker stop cvat_proxy
+```
+
+**Reconfigure nginx for use certificates.**
+
+Bring the configuration file `$HOME/cvat/cvat_proxy/conf.d/cvat.conf.template` to the following form:
+
+* add location with redirect `return 301` to 80/tcp server.
+* change listen to `listen 443 ssl;` in main configururation server
+* add ssl certificates options and secure them.
+
+Example of configuration file:
+
+```
+server {
+    listen       80;
+    server_name  _ default;
+    return       404;
+}
+
+server {
+    listen       80;
+    server_name  ${CVAT_HOST};
+
+    location ^~ /.well-known/acme-challenge/ {
+      default_type "text/plain";
+      root /var/tmp/letsencrypt;
+    }
+
+    location / {
+      return 301 https://$server_name$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl;
+    ssl_certificate /root/.acme.sh/my-cvat-server.org/my-cvat-server.org.cer;
+    ssl_certificate_key /root/.acme.sh/my-cvat-server.org/my-cvat-server.org.key;
+    ssl_trusted_certificate /root/.acme.sh/my-cvat-server.org/fullchain.cer;
+
+    # security options
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_prefer_server_ciphers on;
+    ssl_stapling on;
+    ssl_session_timeout 24h;
+    ssl_session_cache shared:SSL:2m;
+    ssl_ciphers 'ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-DSS-AES128-GCM-SHA256:kEDH+AESGCM:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA:ECDHE-ECDSA-AES128-SHA:ECDHE-RSA-AES256-SHA384:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA:ECDHE-ECDSA-AES256-SHA:DHE-RSA-AES128-SHA256:DHE-RSA-AES128-SHA:DHE-DSS-AES128-SHA256:DHE-RSA-AES256-SHA256:DHE-DSS-AES256-SHA:DHE-RSA-AES256-SHA:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:AES128-SHA:AES256-SHA:AES:CAMELLIA:DES-CBC3-SHA:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!aECDH:!EDH-DSS-DES-CBC3-SHA:!EDH-RSA-DES-CBC3-SHA:!KRB5-DES-CBC3-SHA:!3DES';
+
+    # security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self' http: https: data: blob: 'unsafe-inline'" always;
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+
+    server_name  ${CVAT_HOST};
+
+    proxy_pass_header       X-CSRFToken;
+    proxy_set_header        Host $http_host;
+    proxy_pass_header       Set-Cookie;
+
+    location ~* /api/.*|git/.*|analytics/.*|static/.*|admin|admin/.*|documentation/.*  {
+        proxy_pass              http://cvat:8080;
+    }
+
+    # workaround for match location by arguments
+    location = / {
+        error_page 418 = @annotation_ui;
+
+        if ( $query_string ~ "^id=\d+.*" ) { return 418; }
+        proxy_pass              http://cvat_ui;
+    }
+
+    location / {
+        proxy_pass              http://cvat_ui;
+    }
+
+    # old annotation ui, will be removed in the future.
+    location @annotation_ui {
+        proxy_pass              http://cvat:8080;
+    }
+}
+```
+
+Start cvat_proxy container with https enabled.
+
+```bash
+docker start cvat_proxy
+```

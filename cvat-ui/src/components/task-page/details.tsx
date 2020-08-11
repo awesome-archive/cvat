@@ -1,25 +1,23 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Row,
-    Col,
-    Tag,
-    Icon,
-    Modal,
-    Button,
-    notification,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
+import Tag from 'antd/lib/tag';
+import Icon from 'antd/lib/icon';
+import Modal from 'antd/lib/modal';
+import Button from 'antd/lib/button';
+import notification from 'antd/lib/notification';
 import Text from 'antd/lib/typography/Text';
 import Title from 'antd/lib/typography/Title';
-
 import moment from 'moment';
 
+import getCore from 'cvat-core-wrapper';
+import patterns from 'utils/validation-patterns';
+import { getReposData, syncRepos } from 'utils/git-utils';
 import UserSelector from './user-selector';
 import LabelsEditorComponent from '../labels-editor/labels-editor';
-import getCore from '../../core';
-import patterns from '../../utils/validation-patterns';
-import { getReposData, syncRepos } from '../../utils/git-utils';
 
 const core = getCore();
 
@@ -34,12 +32,15 @@ interface Props {
 interface State {
     name: string;
     bugTracker: string;
+    bugTrackerEditing: boolean;
     repository: string;
     repositoryStatus: string;
 }
 
 export default class DetailsComponent extends React.PureComponent<Props, State> {
     private mounted: boolean;
+    private previewImageElement: HTMLImageElement;
+    private previewWrapperRef: React.RefObject<HTMLDivElement>;
 
     constructor(props: Props) {
         super(props);
@@ -47,17 +48,36 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
         const { taskInstance } = props;
 
         this.mounted = false;
+        this.previewImageElement = new Image();
+        this.previewWrapperRef = React.createRef<HTMLDivElement>();
         this.state = {
             name: taskInstance.name,
             bugTracker: taskInstance.bugTracker,
+            bugTrackerEditing: false,
             repository: '',
             repositoryStatus: '',
         };
     }
 
     public componentDidMount(): void {
-        const { taskInstance } = this.props;
+        const { taskInstance, previewImage } = this.props;
+        const { previewImageElement, previewWrapperRef } = this;
         this.mounted = true;
+
+        previewImageElement.onload = () => {
+            const { height, width } = previewImageElement;
+            if (width > height) {
+                previewImageElement.style.width = '100%';
+            } else {
+                previewImageElement.style.height = '100%';
+            }
+        };
+
+        previewImageElement.src = previewImage;
+        previewImageElement.alt = 'Preview';
+        if (previewWrapperRef.current) {
+            previewWrapperRef.current.appendChild(previewImageElement);
+        }
 
         getReposData(taskInstance.id)
             .then((data): void => {
@@ -131,11 +151,11 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
     }
 
     private renderPreview(): JSX.Element {
-        const { previewImage } = this.props;
+        const { previewWrapperRef } = this;
+
+        // Add image on mount after get its width and height to fit it into wrapper
         return (
-            <div className='cvat-task-preview-wrapper'>
-                <img alt='Preview' className='cvat-task-preview' src={previewImage} />
-            </div>
+            <div ref={previewWrapperRef} className='cvat-task-preview-wrapper' />
         );
     }
 
@@ -245,24 +265,21 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
                                         <Icon type='check-circle' />
                                         Synchronized
                                     </Tag>
-                                )
-                            }
+                                )}
                             {repositoryStatus === 'merged'
                                 && (
                                     <Tag color='green'>
                                         <Icon type='check-circle' />
                                         Merged
                                     </Tag>
-                                )
-                            }
+                                )}
                             {repositoryStatus === 'syncing'
                                 && (
                                     <Tag color='purple'>
                                         <Icon type='loading' />
                                         Syncing
                                     </Tag>
-                                )
-                            }
+                                )}
                             {repositoryStatus === '!sync'
                                 && (
                                     <Tag
@@ -278,8 +295,14 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
                                                         repositoryStatus: 'sync',
                                                     });
                                                 }
-                                            }).catch((): void => {
+                                            }).catch((error): void => {
                                                 if (this.mounted) {
+                                                    Modal.error({
+                                                        width: 800,
+                                                        title: 'Could not synchronize the repository',
+                                                        content: error.toString(),
+                                                    });
+
                                                     this.setState({
                                                         repositoryStatus: '!sync',
                                                     });
@@ -290,8 +313,7 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
                                         <Icon type='warning' />
                                         Synchronize
                                     </Tag>
-                                )
-                            }
+                                )}
                         </Col>
                     </Row>
                 )
@@ -303,9 +325,14 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
             taskInstance,
             onTaskUpdate,
         } = this.props;
-        const { bugTracker } = this.state;
+        const { bugTracker, bugTrackerEditing } = this.state;
 
         let shown = false;
+        const onStart = (): void => {
+            this.setState({
+                bugTrackerEditing: true,
+            });
+        };
         const onChangeValue = (value: string): void => {
             if (value && !patterns.validateURL.pattern.test(value)) {
                 if (!shown) {
@@ -321,6 +348,7 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
             } else {
                 this.setState({
                     bugTracker: value,
+                    bugTrackerEditing: false,
                 });
 
                 taskInstance.bugTracker = value;
@@ -357,7 +385,15 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
                 <Col>
                     <Text strong className='cvat-text-color'>Issue Tracker</Text>
                     <br />
-                    <Text editable={{ onChange: onChangeValue }}>Not specified</Text>
+                    <Text
+                        editable={{
+                            editing: bugTrackerEditing,
+                            onStart,
+                            onChange: onChangeValue,
+                        }}
+                    >
+                        {bugTrackerEditing ? '' : 'Not specified'}
+                    </Text>
                 </Col>
             </Row>
         );

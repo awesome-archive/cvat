@@ -1,119 +1,144 @@
+from functools import partial
 import numpy as np
+import os.path as osp
 
-from unittest import TestCase
-
-from datumaro.components.project import Project
+from unittest import TestCase, skipIf
+from datumaro.components.project import Dataset
 from datumaro.components.extractor import (Extractor, DatasetItem,
-    AnnotationType, BboxObject, LabelCategories
+    AnnotationType, Bbox, Mask, LabelCategories
 )
-from datumaro.components.extractors.tfrecord import DetectionApiExtractor
-from datumaro.components.converters.tfrecord import DetectionApiConverter
-from datumaro.util import find
-from datumaro.util.test_utils import TestDir
+from datumaro.components.project import Project
+from datumaro.util.image import Image
+from datumaro.util.test_utils import TestDir, compare_datasets
+from datumaro.util.tf_util import check_import
 
+try:
+    from datumaro.plugins.tf_detection_api_format.importer import TfDetectionApiImporter
+    from datumaro.plugins.tf_detection_api_format.extractor import TfDetectionApiExtractor
+    from datumaro.plugins.tf_detection_api_format.converter import TfDetectionApiConverter
+    import_failed = False
+except ImportError:
+    import_failed = True
 
+    import importlib
+    module_found = importlib.util.find_spec('tensorflow') is not None
+
+    @skipIf(not module_found, "Tensorflow package is not found")
+    class TfImportTest(TestCase):
+        def test_raises_when_crashes_on_import(self):
+            # Should fire if import can't be done for any reason except
+            # module unavailability and import crash
+            with self.assertRaisesRegex(ImportError, 'Test process exit code'):
+                check_import()
+
+@skipIf(import_failed, "Failed to import tensorflow")
 class TfrecordConverterTest(TestCase):
-    def _test_can_save_and_load(self, source_dataset, converter, test_dir,
-            importer_params=None):
-        converter(source_dataset, test_dir.path)
+    def _test_save_and_load(self, source_dataset, converter, test_dir,
+            target_dataset=None, importer_args=None):
+        converter(source_dataset, test_dir)
 
-        if not importer_params:
-            importer_params = {}
-        project = Project.import_from(test_dir.path, 'tf_detection_api',
-            **importer_params)
-        parsed_dataset = project.make_dataset()
+        if importer_args is None:
+            importer_args = {}
+        parsed_dataset = TfDetectionApiImporter()(test_dir, **importer_args) \
+            .make_dataset()
 
-        self.assertListEqual(
-            sorted(source_dataset.subsets()),
-            sorted(parsed_dataset.subsets()),
-        )
+        if target_dataset is None:
+            target_dataset = source_dataset
 
-        self.assertEqual(len(source_dataset), len(parsed_dataset))
-
-        for item_a in source_dataset:
-            item_b = find(parsed_dataset, lambda x: x.id == item_a.id)
-            self.assertFalse(item_b is None)
-            self.assertEqual(len(item_a.annotations), len(item_b.annotations))
-            for ann_a in item_a.annotations:
-                ann_b = find(item_b.annotations, lambda x: \
-                    x.id == ann_a.id and \
-                    x.type == ann_a.type and x.group == ann_a.group)
-                self.assertEqual(ann_a, ann_b, 'id: ' + str(ann_a.id))
+        compare_datasets(self, expected=target_dataset, actual=parsed_dataset)
 
     def test_can_save_bboxes(self):
-        class TestExtractor(Extractor):
-            def __iter__(self):
-                return iter([
-                    DatasetItem(id=1, subset='train',
-                        image=np.ones((16, 16, 3)),
-                        annotations=[
-                            BboxObject(0, 4, 4, 8, label=2, id=0),
-                            BboxObject(0, 4, 4, 4, label=3, id=1),
-                            BboxObject(2, 4, 4, 4, id=2),
-                        ]
-                    ),
-
-                    DatasetItem(id=2, subset='val',
-                        image=np.ones((8, 8, 3)),
-                        annotations=[
-                            BboxObject(1, 2, 4, 2, label=3, id=0),
-                        ]
-                    ),
-
-                    DatasetItem(id=3, subset='test',
-                        image=np.ones((5, 4, 3)) * 3,
-                    ),
-                ])
-
-            def categories(self):
-                label_cat = LabelCategories()
-                for label in range(10):
-                    label_cat.add('label_' + str(label))
-                return {
-                    AnnotationType.label: label_cat,
-                }
+        test_dataset = Dataset.from_iterable([
+            DatasetItem(id=1, subset='train',
+                image=np.ones((16, 16, 3)),
+                annotations=[
+                    Bbox(0, 4, 4, 8, label=2),
+                    Bbox(0, 4, 4, 4, label=3),
+                    Bbox(2, 4, 4, 4),
+                ], attributes={'source_id': ''}
+            ),
+        ], categories={
+            AnnotationType.label: LabelCategories.from_iterable(
+                'label_' + str(label) for label in range(10)),
+        })
 
         with TestDir() as test_dir:
-            self._test_can_save_and_load(
-                TestExtractor(), DetectionApiConverter(save_images=True),
+            self._test_save_and_load(
+                test_dataset,
+                partial(TfDetectionApiConverter.convert, save_images=True),
+                test_dir)
+
+    def test_can_save_masks(self):
+        test_dataset = Dataset.from_iterable([
+            DatasetItem(id=1, subset='train', image=np.ones((4, 5, 3)),
+                annotations=[
+                    Mask(image=np.array([
+                        [1, 0, 0, 1],
+                        [0, 1, 1, 0],
+                        [0, 1, 1, 0],
+                        [1, 0, 0, 1],
+                    ]), label=1),
+                ],
+                attributes={'source_id': ''}
+            ),
+        ], categories={
+            AnnotationType.label: LabelCategories.from_iterable(
+                'label_' + str(label) for label in range(10)),
+        })
+
+        with TestDir() as test_dir:
+            self._test_save_and_load(
+                test_dataset,
+                partial(TfDetectionApiConverter.convert, save_masks=True),
                 test_dir)
 
     def test_can_save_dataset_with_no_subsets(self):
-        class TestExtractor(Extractor):
-            def __iter__(self):
-                return iter([
-                    DatasetItem(id=1,
-                        image=np.ones((16, 16, 3)),
-                        annotations=[
-                            BboxObject(2, 1, 4, 4, label=2, id=0),
-                            BboxObject(4, 2, 8, 4, label=3, id=1),
-                        ]
-                    ),
+        test_dataset = Dataset.from_iterable([
+            DatasetItem(id=1,
+                image=np.ones((16, 16, 3)),
+                annotations=[
+                    Bbox(2, 1, 4, 4, label=2),
+                    Bbox(4, 2, 8, 4, label=3),
+                ],
+                attributes={'source_id': ''}
+            ),
 
-                    DatasetItem(id=2,
-                        image=np.ones((8, 8, 3)) * 2,
-                        annotations=[
-                            BboxObject(4, 4, 4, 4, label=3, id=0),
-                        ]
-                    ),
+            DatasetItem(id=2,
+                image=np.ones((8, 8, 3)) * 2,
+                annotations=[
+                    Bbox(4, 4, 4, 4, label=3),
+                ],
+                attributes={'source_id': ''}
+            ),
 
-                    DatasetItem(id=3,
-                        image=np.ones((8, 4, 3)) * 3,
-                    ),
-                ])
-
-            def categories(self):
-                label_cat = LabelCategories()
-                for label in range(10):
-                    label_cat.add('label_' + str(label))
-                return {
-                    AnnotationType.label: label_cat,
-                }
+            DatasetItem(id=3,
+                image=np.ones((8, 4, 3)) * 3,
+                attributes={'source_id': ''}
+            ),
+        ], categories={
+            AnnotationType.label: LabelCategories.from_iterable(
+                'label_' + str(label) for label in range(10)),
+        })
 
         with TestDir() as test_dir:
-            self._test_can_save_and_load(
-                TestExtractor(), DetectionApiConverter(save_images=True),
+            self._test_save_and_load(
+                test_dataset,
+                partial(TfDetectionApiConverter.convert, save_images=True),
                 test_dir)
+
+    def test_can_save_dataset_with_image_info(self):
+        test_dataset = Dataset.from_iterable([
+            DatasetItem(id='1/q.e',
+                image=Image(path='1/q.e', size=(10, 15)),
+                attributes={'source_id': ''}
+            )
+        ], categories={
+            AnnotationType.label: LabelCategories(),
+        })
+
+        with TestDir() as test_dir:
+            self._test_save_and_load(test_dataset,
+                TfDetectionApiConverter.convert, test_dir)
 
     def test_labelmap_parsing(self):
         text = """
@@ -137,6 +162,49 @@ class TfrecordConverterTest(TestCase):
             'qw3': 6,
             'qw4': 7,
         }
-        parsed = DetectionApiExtractor._parse_labelmap(text)
+        parsed = TfDetectionApiExtractor._parse_labelmap(text)
 
         self.assertEqual(expected, parsed)
+
+
+DUMMY_DATASET_DIR = osp.join(osp.dirname(__file__),
+    'assets', 'tf_detection_api_dataset')
+
+@skipIf(import_failed, "Failed to import tensorflow")
+class TfrecordImporterTest(TestCase):
+    def test_can_detect(self):
+        self.assertTrue(TfDetectionApiImporter.detect(DUMMY_DATASET_DIR))
+
+    def test_can_import(self):
+        target_dataset = Dataset.from_iterable([
+            DatasetItem(id=1, subset='train',
+                image=np.ones((16, 16, 3)),
+                annotations=[
+                    Bbox(0, 4, 4, 8, label=2),
+                    Bbox(0, 4, 4, 4, label=3),
+                    Bbox(2, 4, 4, 4),
+                ],
+                attributes={'source_id': '1'}
+            ),
+
+            DatasetItem(id=2, subset='val',
+                image=np.ones((8, 8, 3)),
+                annotations=[
+                    Bbox(1, 2, 4, 2, label=3),
+                ],
+                attributes={'source_id': '2'}
+            ),
+
+            DatasetItem(id=3, subset='test',
+                image=np.ones((5, 4, 3)) * 3,
+                attributes={'source_id': '3'}
+            ),
+        ], categories={
+            AnnotationType.label: LabelCategories.from_iterable(
+                'label_' + str(label) for label in range(10)),
+        })
+
+        dataset = Project.import_from(DUMMY_DATASET_DIR, 'tf_detection_api') \
+            .make_dataset()
+
+        compare_datasets(self, target_dataset, dataset)

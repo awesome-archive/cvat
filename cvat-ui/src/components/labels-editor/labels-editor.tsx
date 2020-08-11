@@ -1,16 +1,15 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import './styles.scss';
 import React from 'react';
-
-import {
-    Tabs,
-    Icon,
-    Button,
-    Tooltip,
-    notification,
-} from 'antd';
-
+import Tabs from 'antd/lib/tabs';
+import Icon from 'antd/lib/icon';
+import Button from 'antd/lib/button';
+import Tooltip from 'antd/lib/tooltip';
+import notification from 'antd/lib/notification';
 import Text from 'antd/lib/typography/Text';
-
 import copy from 'copy-to-clipboard';
 
 import RawViewer from './raw-viewer';
@@ -69,7 +68,7 @@ export default class LabelsEditor
                     {
                         id: attr.id || idGenerator(),
                         name: attr.name,
-                        type: attr.input_type,
+                        input_type: attr.input_type,
                         mutable: attr.mutable,
                         values: [...attr.values],
                     }
@@ -203,7 +202,7 @@ export default class LabelsEditor
                     {
                         name: attr.name,
                         id: attr.id < 0 ? undefined : attr.id,
-                        input_type: attr.type.toLowerCase(),
+                        input_type: attr.input_type.toLowerCase(),
                         default_value: attr.values[0],
                         mutable: attr.mutable,
                         values: [...attr.values],
@@ -236,7 +235,7 @@ export default class LabelsEditor
                 tabBarStyle={{ marginBottom: '0px' }}
                 tabBarExtraContent={(
                     <>
-                        <Tooltip overlay='Copied to clipboard!' trigger='click'>
+                        <Tooltip title='Copied to clipboard!' trigger='click' mouseLeaveDelay={0}>
                             <Button
                                 type='link'
                                 icon='copy'

@@ -1,5 +1,5 @@
 /*
-* Copyright (C) 2019 Intel Corporation
+* Copyright (C) 2019-2020 Intel Corporation
 * SPDX-License-Identifier: MIT
 */
 
@@ -14,11 +14,13 @@
 
 function build() {
     const PluginRegistry = require('./plugins');
-    const User = require('./user');
+    const loggerStorage = require('./logger-storage');
+    const Log = require('./log');
     const ObjectState = require('./object-state');
     const Statistics = require('./statistics');
     const { Job, Task } = require('./session');
     const { Attribute, Label } = require('./labels');
+    const MLModel = require('./ml-model');
 
     const {
         ShareFileType,
@@ -27,8 +29,11 @@ function build() {
         AttributeType,
         ObjectType,
         ObjectShape,
-        VisibleState,
         LogType,
+        HistoryActions,
+        RQStatus,
+        colors,
+        Source,
     } = require('./enums');
 
     const {
@@ -40,6 +45,7 @@ function build() {
         ServerError,
     } = require('./exceptions');
 
+    const User = require('./user');
     const pjson = require('../package.json');
     const config = require('./config');
 
@@ -106,7 +112,7 @@ function build() {
                 * @method formats
                 * @async
                 * @memberof module:API.cvat.server
-                * @returns {module:API.cvat.classes.AnnotationFormat[]}
+                * @returns {module:API.cvat.classes.AnnotationFormats}
                 * @throws {module:API.cvat.exceptions.PluginError}
                 * @throws {module:API.cvat.exceptions.ServerError}
             */
@@ -116,20 +122,21 @@ function build() {
                 return result;
             },
             /**
-                * Method returns available dataset export formats
-                * @method exportFormats
+                * Method returns user agreements that the user must accept
+                * @method userAgreements
                 * @async
                 * @memberof module:API.cvat.server
-                * @returns {module:String[]}
+                * @returns {Object[]}
                 * @throws {module:API.cvat.exceptions.PluginError}
                 * @throws {module:API.cvat.exceptions.ServerError}
             */
-            async datasetFormats() {
+            async userAgreements() {
                 const result = await PluginRegistry
-                    .apiWrapper(cvat.server.datasetFormats);
+                    .apiWrapper(cvat.server.userAgreements);
                 return result;
             },
             /**
+
                 * Method allows to register on a server
                 * @method register
                 * @async
@@ -140,13 +147,22 @@ function build() {
                 * @param {string} email A email address for the new account
                 * @param {string} password1 A password for the new account
                 * @param {string} password2 The confirmation password for the new account
+                * @param {Object} userConfirmations An user confirmations of terms of use if needed
                 * @throws {module:API.cvat.exceptions.PluginError}
                 * @throws {module:API.cvat.exceptions.ServerError}
             */
-            async register(username, firstName, lastName, email, password1, password2) {
+            async register(
+                username,
+                firstName,
+                lastName,
+                email,
+                password1,
+                password2,
+                userConfirmations,
+            ) {
                 const result = await PluginRegistry
                     .apiWrapper(cvat.server.register, username, firstName,
-                        lastName, email, password1, password2);
+                        lastName, email, password1, password2, userConfirmations);
                 return result;
             },
             /**
@@ -175,6 +191,19 @@ function build() {
             async logout() {
                 const result = await PluginRegistry
                     .apiWrapper(cvat.server.logout);
+                return result;
+            },
+            /**
+                * Method allows to change user password
+                * @method changePassword
+                * @async
+                * @memberof module:API.cvat.server
+                * @throws {module:API.cvat.exceptions.PluginError}
+                * @throws {module:API.cvat.exceptions.ServerError}
+            */
+            async changePassword(oldPassword, newPassword1, newPassword2) {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.server.changePassword, oldPassword, newPassword1, newPassword2);
                 return result;
             },
             /**
@@ -419,6 +448,166 @@ function build() {
             },
         },
         /**
+            * Namespace is used for serverless functions management (mainly related with DL models)
+            * @namespace lambda
+            * @memberof module:API.cvat
+        */
+        lambda: {
+            /**
+                * Method returns list of available serverless models
+                * @method list
+                * @async
+                * @memberof module:API.cvat.lambda
+                * @returns {module:API.cvat.classes.MLModel[]}
+                * @throws {module:API.cvat.exceptions.ServerError}
+                * @throws {module:API.cvat.exceptions.PluginError}
+            */
+            async list() {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.lambda.list);
+                return result;
+            },
+
+            /**
+                * Run long-time request for a function on a specific task
+                * @method run
+                * @async
+                * @memberof module:API.cvat.lambda
+                * @param {module:API.cvat.classes.Task} task task to be annotated
+                * @param {module:API.cvat.classes.MLModel} model model used to get annotation
+                * @param {object} [args] extra arguments
+                * @returns {string} requestID
+                * @throws {module:API.cvat.exceptions.ServerError}
+                * @throws {module:API.cvat.exceptions.PluginError}
+                * @throws {module:API.cvat.exceptions.ArgumentError}
+            */
+            async run(task, model, args) {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.lambda.run, task, model, args);
+                return result;
+            },
+
+            /**
+                * Run short-time request for a function on a specific task
+                * @method call
+                * @async
+                * @memberof module:API.cvat.lambda
+                * @param {module:API.cvat.classes.Task} task task to be annotated
+                * @param {module:API.cvat.classes.MLModel} model model used to get annotation
+                * @param {object} [args] extra arguments
+                * @returns {string} requestID
+                * @throws {module:API.cvat.exceptions.ServerError}
+                * @throws {module:API.cvat.exceptions.PluginError}
+                * @throws {module:API.cvat.exceptions.ArgumentError}
+            */
+            async call(task, model, args) {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.lambda.call, task, model, args);
+                return result;
+            },
+
+            /**
+                * Cancel running of a serverless function for a specific task
+                * @method cancel
+                * @async
+                * @memberof module:API.cvat.lambda
+                * @param {string} requestID
+                * @throws {module:API.cvat.exceptions.ServerError}
+                * @throws {module:API.cvat.exceptions.PluginError}
+                * @throws {module:API.cvat.exceptions.ArgumentError}
+            */
+            async cancel(requestID) {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.lambda.cancel, requestID);
+                return result;
+            },
+
+            /**
+                * @callback onRequestStatusChange
+                * @param {string} status
+                * @param {number} progress
+                * @param {string} [message]
+                * @global
+            */
+            /**
+                * Listen for a specific request
+                * @method listen
+                * @async
+                * @memberof module:API.cvat.lambda
+                * @param {string} requestID
+                * @param {onRequestStatusChange} onChange
+                * @throws {module:API.cvat.exceptions.ArgumentError}
+                * @throws {module:API.cvat.exceptions.ServerError}
+                * @throws {module:API.cvat.exceptions.PluginError}
+            */
+            async listen(requestID, onChange) {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.lambda.listen, requestID, onChange);
+                return result;
+            },
+
+            /**
+                * Get active lambda requests
+                * @method requests
+                * @async
+                * @memberof module:API.cvat.lambda
+                * @throws {module:API.cvat.exceptions.ServerError}
+                * @throws {module:API.cvat.exceptions.PluginError}
+            */
+            async requests() {
+                const result = await PluginRegistry
+                    .apiWrapper(cvat.lambda.requests);
+                return result;
+            },
+        },
+        /**
+            * Namespace to working with logs
+            * @namespace logger
+            * @memberof module:API.cvat
+        */
+        /**
+             * Method to logger configuration
+             * @method configure
+             * @memberof module:API.cvat.logger
+             * @param {function} isActiveChecker - callback to know if logger
+             * should increase working time or not
+             * @param {object} userActivityCallback - container for a callback <br>
+             * Logger put here a callback to update user activity timer <br>
+             * You can call it outside
+             * @instance
+             * @async
+             * @throws {module:API.cvat.exceptions.PluginError}
+             * @throws {module:API.cvat.exceptions.ArgumentError}
+         */
+
+        /**
+            * Append log to a log collection <br>
+            * Durable logs will have been added after "close" method is called for them <br>
+            * Ignore rules exist for some logs (e.g. zoomImage, changeAttribute) <br>
+            * Payload of ignored logs are shallowly combined to previous logs of the same type
+            * @method log
+            * @memberof module:API.cvat.logger
+            * @param {module:API.cvat.enums.LogType | string} type - log type
+            * @param {Object} [payload = {}] - any other data that will be appended to the log
+            * @param {boolean} [wait = false] - specifies if log is durable
+            * @returns {module:API.cvat.classes.Log}
+            * @instance
+            * @async
+            * @throws {module:API.cvat.exceptions.PluginError}
+            * @throws {module:API.cvat.exceptions.ArgumentError}
+        */
+
+        /**
+            * Save accumulated logs on a server
+            * @method save
+            * @memberof module:API.cvat.logger
+            * @throws {module:API.cvat.exceptions.PluginError}
+            * @throws {module:API.cvat.exceptions.ServerError}
+            * @instance
+            * @async
+        */
+        logger: loggerStorage,
+        /**
             * Namespace contains some changeable configurations
             * @namespace config
             * @memberof module:API.cvat
@@ -431,12 +620,6 @@ function build() {
                 * @property {string} proxy Axios proxy settings.
                 * For more details please read <a href="https://github.com/axios/axios"> here </a>
                 * @memberof module:API.cvat.config
-                * @property {integer} taskID this value is displayed in a logs if available
-                * @memberof module:API.cvat.config
-                * @property {integer} jobID this value is displayed in a logs if available
-                * @memberof module:API.cvat.config
-                * @property {integer} clientID read only auto-generated
-                * value which is displayed in a logs
                 * @memberof module:API.cvat.config
             */
             get backendAPI() {
@@ -450,21 +633,6 @@ function build() {
             },
             set proxy(value) {
                 config.proxy = value;
-            },
-            get taskID() {
-                return config.taskID;
-            },
-            set taskID(value) {
-                config.taskID = value;
-            },
-            get jobID() {
-                return config.jobID;
-            },
-            set jobID(value) {
-                config.jobID = value;
-            },
-            get clientID() {
-                return config.clientID;
             },
         },
         /**
@@ -497,8 +665,11 @@ function build() {
             AttributeType,
             ObjectType,
             ObjectShape,
-            VisibleState,
             LogType,
+            HistoryActions,
+            RQStatus,
+            colors,
+            Source,
         },
         /**
             * Namespace is used for access to exceptions
@@ -522,10 +693,12 @@ function build() {
             Task,
             User,
             Job,
+            Log,
             Attribute,
             Label,
             Statistics,
             ObjectState,
+            MLModel,
         },
     };
 
@@ -534,6 +707,7 @@ function build() {
     cvat.jobs = Object.freeze(cvat.jobs);
     cvat.users = Object.freeze(cvat.users);
     cvat.plugins = Object.freeze(cvat.plugins);
+    cvat.lambda = Object.freeze(cvat.lambda);
     cvat.client = Object.freeze(cvat.client);
     cvat.enums = Object.freeze(cvat.enums);
 

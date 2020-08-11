@@ -1,7 +1,6 @@
-/*
-* Copyright (C) 2019 Intel Corporation
-* SPDX-License-Identifier: MIT
-*/
+// Copyright (C) 2019-2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
 
 import * as SVG from 'svg.js';
 import consts from './consts';
@@ -26,11 +25,37 @@ export interface BBox {
     y: number;
 }
 
-// Translate point array from the client coordinate system
-// to a coordinate system of a canvas
+interface Point {
+    x: number;
+    y: number;
+}
+
+interface Vector2D {
+    i: number;
+    j: number;
+}
+
+export interface DrawnState {
+    clientID: number;
+    outside?: boolean;
+    occluded?: boolean;
+    hidden?: boolean;
+    lock: boolean;
+    shapeType: string;
+    points?: number[];
+    attributes: Record<number, string>;
+    zOrder?: number;
+    pinned?: boolean;
+    updated: number;
+    frame: number;
+    label: any;
+}
+
+// Translate point array from the canvas coordinate system
+// to the coordinate system of a client
 export function translateFromSVG(svg: SVGSVGElement, points: number[]): number[] {
     const output = [];
-    const transformationMatrix = svg.getScreenCTM();
+    const transformationMatrix = svg.getScreenCTM() as DOMMatrix;
     let pt = svg.createSVGPoint();
     for (let i = 0; i < points.length - 1; i += 2) {
         pt.x = points[i];
@@ -42,11 +67,11 @@ export function translateFromSVG(svg: SVGSVGElement, points: number[]): number[]
     return output;
 }
 
-// Translate point array from a coordinate system of a canvas
-// to the client coordinate system
+// Translate point array from the coordinate system of a client
+// to the canvas coordinate system
 export function translateToSVG(svg: SVGSVGElement, points: number[]): number[] {
     const output = [];
-    const transformationMatrix = svg.getScreenCTM().inverse();
+    const transformationMatrix = (svg.getScreenCTM() as DOMMatrix).inverse();
     let pt = svg.createSVGPoint();
     for (let i = 0; i < points.length; i += 2) {
         pt.x = points[i];
@@ -56,31 +81,6 @@ export function translateToSVG(svg: SVGSVGElement, points: number[]): number[] {
     }
 
     return output;
-}
-
-// Translate point array from the first canvas coordinate system
-// to another
-export function translateBetweenSVG(
-    from: SVGSVGElement,
-    to: SVGSVGElement,
-    points: number[],
-): number[] {
-    return translateToSVG(to, translateFromSVG(from, points));
-}
-
-export function pointsToString(points: number[]): string {
-    return points.reduce((acc, val, idx): string => {
-        if (idx % 2) {
-            return `${acc},${val}`;
-        }
-
-        return `${acc} ${val}`;
-    }, '');
-}
-
-export function pointsToArray(points: string): number[] {
-    return points.trim().split(/[,\s]+/g)
-        .map((coord: string): number => +coord);
 }
 
 export function displayShapeSize(
@@ -110,4 +110,61 @@ export function displayShapeSize(
     };
 
     return shapeSize;
+}
+
+export function pointsToNumberArray(points: string | Point[]): number[] {
+    if (Array.isArray(points)) {
+        return points.reduce((acc: number[], point: Point): number[] => {
+            acc.push(point.x, point.y);
+            return acc;
+        }, []);
+    }
+
+    return points.trim().split(/[,\s]+/g)
+        .map((coord: string): number => +coord);
+}
+
+export function parsePoints(source: string | number[]): Point[] {
+    if (Array.isArray(source)) {
+        return source.reduce((acc: Point[], _: number, index: number): Point[] => {
+            if (index % 2) {
+                acc.push({
+                    x: source[index - 1],
+                    y: source[index],
+                });
+            }
+
+            return acc;
+        }, []);
+    }
+
+    return source.trim().split(/\s/).map((point: string): Point => {
+        const [x, y] = point.split(',').map((coord: string): number => +coord);
+        return { x, y };
+    });
+}
+
+export function stringifyPoints(points: (Point | number)[]): string {
+    if (typeof (points[0]) === 'number') {
+        return points.reduce((acc: string, val: number, idx: number): string => {
+            if (idx % 2) {
+                return `${acc},${val}`;
+            }
+
+            return `${acc} ${val}`.trim();
+        }, '');
+    }
+    return points.map((point: Point): string => `${point.x},${point.y}`).join(' ');
+}
+
+export function clamp(x: number, min: number, max: number): number {
+    return Math.min(Math.max(x, min), max);
+}
+
+export function scalarProduct(a: Vector2D, b: Vector2D): number {
+    return a.i * b.i + a.j * b.j;
+}
+
+export function vectorLength(vector: Vector2D): number {
+    return Math.sqrt((vector.i ** 2) + (vector.j ** 2));
 }

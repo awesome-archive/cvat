@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2019 Intel Corporation
+ * SPDX-License-Identifier: MIT
+*/
+
 /* eslint-disable */
 const path = require('path');
 const DtsBundleWebpack = require('dts-bundle-webpack')
@@ -18,10 +23,12 @@ const nodeConfig = {
     },
     module: {
         rules: [{
+            test: /\.ts$/,
             exclude: /node_modules/,
             use: {
                 loader: 'babel-loader',
                 options: {
+                    plugins: ['@babel/plugin-proposal-class-properties'],
                     presets: [
                         ['@babel/preset-env'],
                         ['@babel/typescript'],
@@ -30,14 +37,20 @@ const nodeConfig = {
                 },
             },
         }, {
-            test: /\.css$/,
-            use: ['style-loader', 'css-loader']
+            test: /\.(css|scss)$/,
+            exclude: /node_modules/,
+            use: ['style-loader', {
+                loader: 'css-loader',
+                options: {
+                    importLoaders: 2,
+                },
+            }, 'postcss-loader', 'sass-loader']
         }],
     },
     plugins: [
         new DtsBundleWebpack({
             name: 'cvat-canvas.node',
-            main: 'dist/declaration/canvas.d.ts',
+            main: 'dist/declaration/src/typescript/canvas.d.ts',
             out: '../cvat-canvas.node.d.ts',
         }),
     ]
@@ -47,10 +60,12 @@ const webConfig = {
     target: 'web',
     mode: 'production',
     devtool: 'source-map',
-    entry: './src/typescript/canvas.ts',
+    entry: {
+        'cvat-canvas': './src/typescript/canvas.ts',
+    },
     output: {
         path: path.resolve(__dirname, 'dist'),
-        filename: 'cvat-canvas.js',
+        filename: '[name].[contenthash].js',
         library: 'canvas',
         libraryTarget: 'window',
     },
@@ -65,26 +80,36 @@ const webConfig = {
     },
     module: {
         rules: [{
+            test: /\.ts$/,
             exclude: /node_modules/,
             use: {
                 loader: 'babel-loader',
                 options: {
+                    plugins: ['@babel/plugin-proposal-class-properties'],
                     presets: [
-                        ['@babel/preset-env'],
+                        ['@babel/preset-env', {
+                            targets: '> 2.5%', // https://github.com/browserslist/browserslist
+                        }],
                         ['@babel/typescript'],
                     ],
                     sourceType: 'unambiguous',
                 },
             },
         }, {
-            test: /\.css$/,
-            use: ['style-loader', 'css-loader']
+            test: /\.scss$/,
+            exclude: /node_modules/,
+            use: ['style-loader', {
+                loader: 'css-loader',
+                options: {
+                    importLoaders: 2,
+                },
+            }, 'postcss-loader', 'sass-loader']
         }],
     },
     plugins: [
         new DtsBundleWebpack({
             name: 'cvat-canvas',
-            main: 'dist/declaration/canvas.d.ts',
+            main: 'dist/declaration/src/typescript/canvas.d.ts',
             out: '../cvat-canvas.d.ts',
         }),
     ]

@@ -1,11 +1,12 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-import { FormComponentProps } from 'antd/lib/form/Form';
-import {
-    Button,
-    Icon,
-    Input,
-    Form,
-} from 'antd';
+import Form, { FormComponentProps } from 'antd/lib/form/Form';
+import Button from 'antd/lib/button';
+import Icon from 'antd/lib/icon';
+import Input from 'antd/lib/input';
 
 export interface LoginData {
     username: string;

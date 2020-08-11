@@ -1,18 +1,21 @@
-import React from 'react';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 
 import {
     Task,
     TasksQuery,
     CombinedState,
-} from '../../reducers/interfaces';
+} from 'reducers/interfaces';
 
-import TasksPageComponent from '../../components/tasks-page/tasks-page';
+import TasksPageComponent from 'components/tasks-page/tasks-page';
 
 import {
     getTasksAsync,
     hideEmptyTasks,
-} from '../../actions/tasks-actions';
+} from 'actions/tasks-actions';
 
 interface StateToProps {
     tasksFetching: boolean;
@@ -51,15 +54,7 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
     };
 }
 
-type TasksPageContainerProps = StateToProps & DispatchToProps;
-
-function TasksPageContainer(props: TasksPageContainerProps): JSX.Element {
-    return (
-        <TasksPageComponent {...props} />
-    );
-}
-
 export default connect(
     mapStateToProps,
     mapDispatchToProps,
-)(TasksPageContainer);
+)(TasksPageComponent);

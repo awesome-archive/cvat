@@ -14,6 +14,7 @@
     } = require('./exceptions');
     const store = require('store');
     const config = require('./config');
+    const DownloadWorker = require('./download.worker');
 
     function generateError(errorData) {
         if (errorData.response) {
@@ -26,12 +27,66 @@
         return new ServerError(message, 0);
     }
 
+    class WorkerWrappedAxios {
+        constructor() {
+            const worker = new DownloadWorker();
+            const requests = {};
+            let requestId = 0;
+
+            worker.onmessage = (e) => {
+                if (e.data.id in requests) {
+                    if (e.data.isSuccess) {
+                        requests[e.data.id].resolve(e.data.responseData);
+                    } else {
+                        requests[e.data.id].reject(e.data.error);
+                    }
+
+                    delete requests[e.data.id];
+                }
+            };
+
+            worker.onerror = (e) => {
+                if (e.data.id in requests) {
+                    requests[e.data.id].reject(e);
+                    delete requests[e.data.id];
+                }
+            };
+
+            function getRequestId() {
+                return requestId++;
+            }
+
+            async function get(url, requestConfig) {
+                return new Promise((resolve, reject) => {
+                    const newRequestId = getRequestId();
+                    requests[newRequestId] = {
+                        resolve,
+                        reject,
+                    };
+                    worker.postMessage({
+                        url,
+                        config: requestConfig,
+                        id: newRequestId,
+                    });
+                });
+            }
+
+            Object.defineProperties(this, Object.freeze({
+                get: {
+                    value: get,
+                    writable: false,
+                },
+            }));
+        }
+    }
+
     class ServerProxy {
         constructor() {
             const Axios = require('axios');
             Axios.defaults.withCredentials = true;
             Axios.defaults.xsrfHeaderName = 'X-CSRFTOKEN';
             Axios.defaults.xsrfCookieName = 'csrftoken';
+            const workerAxios = new WorkerWrappedAxios();
 
             let token = store.get('token');
             if (token) {
@@ -99,23 +154,30 @@
                 return response.data;
             }
 
-            async function datasetFormats() {
-                const { backendAPI } = config;
 
+            async function userAgreements() {
+                const { backendAPI } = config;
                 let response = null;
                 try {
-                    response = await Axios.get(`${backendAPI}/server/dataset/formats`, {
+                    response = await Axios.get(`${backendAPI}/restrictions/user-agreements`, {
                         proxy: config.proxy,
                     });
-                    response = JSON.parse(response.data);
                 } catch (errorData) {
                     throw generateError(errorData);
                 }
 
-                return response;
+                return response.data;
             }
 
-            async function register(username, firstName, lastName, email, password1, password2) {
+            async function register(
+                username,
+                firstName,
+                lastName,
+                email,
+                password1,
+                password2,
+                confirmations,
+            ) {
                 let response = null;
                 try {
                     const data = JSON.stringify({
@@ -125,6 +187,7 @@
                         email,
                         password1,
                         password2,
+                        confirmations,
                     });
                     response = await Axios.post(`${config.backendAPI}/auth/register`, data, {
                         proxy: config.proxy,
@@ -181,6 +244,24 @@
 
                 store.remove('token');
                 Axios.defaults.headers.common.Authorization = '';
+            }
+
+            async function changePassword(oldPassword, newPassword1, newPassword2) {
+                try {
+                    const data = JSON.stringify({
+                        old_password: oldPassword,
+                        new_password1: newPassword1,
+                        new_password2:newPassword2,
+                    });
+                    await Axios.post(`${config.backendAPI}/auth/password/change`, data, {
+                        proxy: config.proxy,
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
             }
 
             async function authorized() {
@@ -275,7 +356,7 @@
                 });
             }
 
-            async function createTask(taskData, files, onUpdate) {
+            async function createTask(taskSpec, taskDataSpec, onUpdate) {
                 const { backendAPI } = config;
 
                 async function wait(id) {
@@ -315,12 +396,14 @@
                     });
                 }
 
-                const batchOfFiles = new FormData();
-                for (const key in files) {
-                    if (Object.prototype.hasOwnProperty.call(files, key)) {
-                        for (let i = 0; i < files[key].length; i++) {
-                            batchOfFiles.append(`${key}[${i}]`, files[key][i]);
-                        }
+                const taskData = new FormData();
+                for (const [key, value] of Object.entries(taskDataSpec)) {
+                    if (Array.isArray(value)) {
+                        value.forEach((element, idx) => {
+                            taskData.append(`${key}[${idx}]`, element);
+                        });
+                    } else {
+                        taskData.set(key, value);
                     }
                 }
 
@@ -328,7 +411,7 @@
 
                 onUpdate('The task is being created on the server..');
                 try {
-                    response = await Axios.post(`${backendAPI}/tasks`, JSON.stringify(taskData), {
+                    response = await Axios.post(`${backendAPI}/tasks`, JSON.stringify(taskSpec), {
                         proxy: config.proxy,
                         headers: {
                             'Content-Type': 'application/json',
@@ -340,7 +423,7 @@
 
                 onUpdate('The data is being uploaded to the server..');
                 try {
-                    await Axios.post(`${backendAPI}/tasks/${response.data.id}/data`, batchOfFiles, {
+                    await Axios.post(`${backendAPI}/tasks/${response.data.id}/data`, taskData, {
                         proxy: config.proxy,
                     });
                 } catch (errorData) {
@@ -435,8 +518,7 @@
 
                 let response = null;
                 try {
-                    // TODO: change 0 frame to preview
-                    response = await Axios.get(`${backendAPI}/tasks/${tid}/frames/0`, {
+                    response = await Axios.get(`${backendAPI}/tasks/${tid}/data?type=preview`, {
                         proxy: config.proxy,
                         responseType: 'blob',
                     });
@@ -451,20 +533,23 @@
                 return response.data;
             }
 
-            async function getData(tid, frame) {
+            async function getData(tid, chunk) {
                 const { backendAPI } = config;
 
                 let response = null;
                 try {
-                    response = await Axios.get(`${backendAPI}/tasks/${tid}/frames/${frame}`, {
-                        proxy: config.proxy,
-                        responseType: 'blob',
-                    });
+                    response = await workerAxios.get(
+                        `${backendAPI}/tasks/${tid}/data?type=chunk&number=${chunk}&quality=compressed`,
+                        {
+                            proxy: config.proxy,
+                            responseType: 'arraybuffer',
+                        },
+                    );
                 } catch (errorData) {
                     throw generateError(errorData);
                 }
 
-                return response.data;
+                return response;
             }
 
             async function getMeta(tid) {
@@ -472,7 +557,7 @@
 
                 let response = null;
                 try {
-                    response = await Axios.get(`${backendAPI}/tasks/${tid}/frames/meta`, {
+                    response = await Axios.get(`${backendAPI}/tasks/${tid}/data/meta`, {
                         proxy: config.proxy,
                     });
                 } catch (errorData) {
@@ -558,8 +643,13 @@
             // Session is 'task' or 'job'
             async function dumpAnnotations(id, name, format) {
                 const { backendAPI } = config;
-                const filename = name.replace(/\//g, '_');
-                let url = `${backendAPI}/tasks/${id}/annotations/${filename}?format=${format}`;
+                const baseURL = `${backendAPI}/tasks/${id}/annotations`;
+                let query = `format=${encodeURIComponent(format)}`;
+                if (name) {
+                    const filename = name.replace(/\//g, '_');
+                    query += `&filename=${encodeURIComponent(filename)}`;
+                }
+                let url = `${baseURL}?${query}`;
 
                 return new Promise((resolve, reject) => {
                     async function request() {
@@ -569,7 +659,8 @@
                             if (response.status === 202) {
                                 setTimeout(request, 3000);
                             } else {
-                                url = `${url}&action=download`;
+                                query = `${query}&action=download`;
+                                url = `${baseURL}?${query}`;
                                 resolve(url);
                             }
                         }).catch((errorData) => {
@@ -581,19 +672,125 @@
                 });
             }
 
+            async function saveLogs(logs) {
+                const { backendAPI } = config;
+
+                try {
+                    await Axios.post(`${backendAPI}/server/logs`, JSON.stringify(logs), {
+                        proxy: config.proxy,
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                    });
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
+            async function getLambdaFunctions() {
+                const { backendAPI } = config;
+
+                try {
+                    const response = await Axios.get(`${backendAPI}/lambda/functions`, {
+                        proxy: config.proxy,
+                    });
+                    return response.data;
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
+            async function runLambdaRequest(body) {
+                const { backendAPI } = config;
+
+                try {
+                    const response = await Axios.post(`${backendAPI}/lambda/requests`,
+                        JSON.stringify(body), {
+                            proxy: config.proxy,
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                        });
+
+                    return response.data;
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
+            async function callLambdaFunction(funId, body) {
+                const { backendAPI } = config;
+
+                try {
+                    const response = await Axios.post(`${backendAPI}/lambda/functions/${funId}`,
+                        JSON.stringify(body), {
+                            proxy: config.proxy,
+                            headers: {
+                                'Content-Type': 'application/json',
+                            },
+                        });
+
+                    return response.data;
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
+            async function getLambdaRequests() {
+                const { backendAPI } = config;
+
+                try {
+                    const response = await Axios.get(`${backendAPI}/lambda/requests`, {
+                        proxy: config.proxy,
+                    });
+
+                    return response.data;
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
+            async function getRequestStatus(requestID) {
+                const { backendAPI } = config;
+
+                try {
+                    const response = await Axios.get(`${backendAPI}/lambda/requests/${requestID}`, {
+                        proxy: config.proxy,
+                    });
+                    return response.data;
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
+            async function cancelLambdaRequest(requestId) {
+                const { backendAPI } = config;
+
+                try {
+                    await Axios.delete(
+                        `${backendAPI}/lambda/requests/${requestId}`, {
+                            method: 'DELETE',
+                        },
+                    );
+                } catch (errorData) {
+                    throw generateError(errorData);
+                }
+            }
+
             Object.defineProperties(this, Object.freeze({
                 server: {
                     value: Object.freeze({
                         about,
                         share,
                         formats,
-                        datasetFormats,
                         exception,
                         login,
                         logout,
+                        changePassword,
                         authorized,
                         register,
                         request: serverRequest,
+                        userAgreements,
                     }),
                     writable: false,
                 },
@@ -640,6 +837,25 @@
                         getAnnotations,
                         dumpAnnotations,
                         uploadAnnotations,
+                    }),
+                    writable: false,
+                },
+
+                logs: {
+                    value: Object.freeze({
+                        save: saveLogs,
+                    }),
+                    writable: false,
+                },
+
+                lambda: {
+                    value: Object.freeze({
+                        list: getLambdaFunctions,
+                        status: getRequestStatus,
+                        requests: getLambdaRequests,
+                        run: runLambdaRequest,
+                        call: callLambdaFunction,
+                        cancel: cancelLambdaRequest,
                     }),
                     writable: false,
                 },

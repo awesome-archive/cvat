@@ -1,16 +1,19 @@
-import React from 'react';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 
-import ModelRunnerModalComponent from '../../components/model-runner-modal/model-runner-modal';
+import ModelRunnerModalComponent from 'components/model-runner-modal/model-runner-modal';
 import {
     Model,
     CombinedState,
-} from '../../reducers/interfaces';
+} from 'reducers/interfaces';
 import {
     getModelsAsync,
-    inferModelAsync,
-    closeRunModelDialog,
-} from '../../actions/models-actions';
+    startInferenceAsync,
+    modelsActions,
+} from 'actions/models-actions';
 
 
 interface StateToProps {
@@ -28,10 +31,7 @@ interface DispatchToProps {
     runInference(
         taskInstance: any,
         model: Model,
-        mapping: {
-            [index: string]: string;
-        },
-        cleanOut: boolean,
+        body: object,
     ): void;
     getModels(): void;
     closeDialog(): void;
@@ -55,30 +55,20 @@ function mapDispatchToProps(dispatch: any): DispatchToProps {
         runInference(
             taskInstance: any,
             model: Model,
-            mapping: {
-                [index: string]: string;
-            },
-            cleanOut: boolean,
+            body: object,
         ): void {
-            dispatch(inferModelAsync(taskInstance, model, mapping, cleanOut));
+            dispatch(startInferenceAsync(taskInstance, model, body));
         },
         getModels(): void {
             dispatch(getModelsAsync());
         },
         closeDialog(): void {
-            dispatch(closeRunModelDialog());
+            dispatch(modelsActions.closeRunModelDialog());
         },
     });
-}
-
-
-function ModelRunnerModalContainer(props: StateToProps & DispatchToProps): JSX.Element {
-    return (
-        <ModelRunnerModalComponent {...props} />
-    );
 }
 
 export default connect(
     mapStateToProps,
     mapDispatchToProps,
-)(ModelRunnerModalContainer);
+)(ModelRunnerModalComponent);

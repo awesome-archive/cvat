@@ -1,22 +1,21 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Row,
-    Col,
-    Icon,
-    Table,
-    Button,
-    Tooltip,
-} from 'antd';
-
+import { RouteComponentProps } from 'react-router';
+import { withRouter } from 'react-router-dom';
+import { Row, Col } from 'antd/lib/grid';
+import Icon from 'antd/lib/icon';
+import Table from 'antd/lib/table';
+import Button from 'antd/lib/button';
+import Tooltip from 'antd/lib/tooltip';
 import Text from 'antd/lib/typography/Text';
-
 import moment from 'moment';
 import copy from 'copy-to-clipboard';
 
+import getCore from 'cvat-core-wrapper';
 import UserSelector from './user-selector';
-import getCore from '../../core';
-
 
 const core = getCore();
 
@@ -28,19 +27,35 @@ interface Props {
     onJobUpdate(jobInstance: any): void;
 }
 
-export default function JobListComponent(props: Props): JSX.Element {
+function JobListComponent(props: Props & RouteComponentProps): JSX.Element {
     const {
         taskInstance,
         registeredUsers,
         onJobUpdate,
+        history: {
+            push,
+        },
     } = props;
 
-    const { jobs } = taskInstance;
+    const { jobs, id: taskId } = taskInstance;
     const columns = [{
         title: 'Job',
         dataIndex: 'job',
         key: 'job',
-        render: (id: number): JSX.Element => (<a href={`${baseURL}/?id=${id}`}>{ `Job #${id}` }</a>),
+        render: (id: number): JSX.Element => (
+            <div>
+                <Button
+                    type='link'
+                    onClick={(e: React.MouseEvent): void => {
+                        e.preventDefault();
+                        push(`/tasks/${taskId}/jobs/${id}`);
+                    }}
+                    href={`/tasks/${taskId}/jobs/${id}`}
+                >
+                    {`Job #${id}`}
+                </Button>
+            </div>
+        ),
     }, {
         title: 'Frames',
         dataIndex: 'frames',
@@ -128,7 +143,7 @@ export default function JobListComponent(props: Props): JSX.Element {
             <Row type='flex' justify='space-between' align='middle'>
                 <Col>
                     <Text className='cvat-text-color cvat-jobs-header'> Jobs </Text>
-                    <Tooltip trigger='click' title='Copied to clipboard!'>
+                    <Tooltip trigger='click' title='Copied to clipboard!' mouseLeaveDelay={0}>
                         <Button
                             type='link'
                             onClick={(): void => {
@@ -169,3 +184,5 @@ export default function JobListComponent(props: Props): JSX.Element {
         </div>
     );
 }
+
+export default withRouter(JobListComponent);

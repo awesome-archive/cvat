@@ -1,26 +1,26 @@
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Row,
-    Col,
-    Icon,
-    Input,
-    Button,
-    Select,
-    Tooltip,
-    Checkbox,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
+import Icon from 'antd/lib/icon';
+import Input from 'antd/lib/input';
+import Button from 'antd/lib/button';
+import Checkbox from 'antd/lib/checkbox';
+import Tooltip from 'antd/lib/tooltip';
+import Select from 'antd/lib/select';
 import Form, { FormComponentProps } from 'antd/lib/form/Form';
 import Text from 'antd/lib/typography/Text';
 
+import patterns from 'utils/validation-patterns';
 import {
     equalArrayHead,
     idGenerator,
     Label,
     Attribute,
 } from './common';
-import patterns from '../../utils/validation-patterns';
+
 
 export enum AttributeType {
     SELECT = 'SELECT',
@@ -67,9 +67,11 @@ class LabelForm extends React.PureComponent<Props, {}> {
                             }
                         }
 
+                        attrValues = attrValues.map((value: string) => value.trim());
+
                         return {
                             name: formValues.attrName[key],
-                            type: formValues.type[key],
+                            input_type: formValues.type[key],
                             mutable: formValues.mutable[key],
                             id: label && index < label.attributes.length
                                 ? label.attributes[index].id : key,
@@ -129,13 +131,13 @@ class LabelForm extends React.PureComponent<Props, {}> {
 
     private renderAttributeTypeInput(key: number, attr: Attribute | null): JSX.Element {
         const locked = attr ? attr.id >= 0 : false;
-        const type = attr ? attr.type.toUpperCase() : AttributeType.SELECT;
+        const type = attr ? attr.input_type.toUpperCase() : AttributeType.SELECT;
         const { form } = this.props;
 
         return (
             <Col span={4}>
                 <Form.Item>
-                    <Tooltip overlay='An HTML element representing the attribute'>
+                    <Tooltip title='An HTML element representing the attribute' mouseLeaveDelay={0}>
                         { form.getFieldDecorator(`type[${key}]`, {
                             initialValue: type,
                         })(
@@ -185,7 +187,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
         };
 
         return (
-            <Tooltip overlay='Press enter to add a new value'>
+            <Tooltip title='Press enter to add a new value' mouseLeaveDelay={0}>
                 <Form.Item>
                     { form.getFieldDecorator(`values[${key}]`, {
                         initialValue: existedValues,
@@ -212,7 +214,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
         const { form } = this.props;
 
         return (
-            <Tooltip overlay='Specify a default value'>
+            <Tooltip title='Specify a default value' mouseLeaveDelay={0}>
                 <Form.Item>
                     { form.getFieldDecorator(`values[${key}]`, {
                         initialValue: value,
@@ -229,7 +231,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
 
     private renderNumberRangeInput(key: number, attr: Attribute | null): JSX.Element {
         const locked = attr ? attr.id >= 0 : false;
-        const value = attr ? attr.values[0] : '';
+        const value = attr ? attr.values.join(';') : '';
         const { form } = this.props;
 
         const validator = (_: any, strNumbers: string, callback: any): void => {
@@ -237,21 +239,27 @@ class LabelForm extends React.PureComponent<Props, {}> {
                 .split(';')
                 .map((number): number => Number.parseFloat(number));
             if (numbers.length !== 3) {
-                callback('Invalid input');
+                callback('Three numbers are expected');
             }
 
             for (const number of numbers) {
                 if (Number.isNaN(number)) {
-                    callback('Invalid input');
+                    callback(`"${number}" is not a number`);
                 }
             }
 
-            if (numbers[0] >= numbers[1]) {
-                callback('Invalid input');
+            const [min, max, step] = numbers;
+
+            if (min >= max) {
+                callback('Minimum must be less than maximum');
             }
 
-            if (+numbers[1] - +numbers[0] < +numbers[2]) {
-                callback('Invalid input');
+            if (max - min < step) {
+                callback('Step must be less than minmax difference');
+            }
+
+            if (step <= 0) {
+                callback('Step must be a positive number');
             }
 
             callback();
@@ -296,7 +304,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
 
         return (
             <Form.Item>
-                <Tooltip overlay='Can this attribute be changed frame to frame?'>
+                <Tooltip title='Can this attribute be changed frame to frame?' mouseLeaveDelay={0}>
                     { form.getFieldDecorator(`mutable[${key}]`, {
                         initialValue: value,
                         valuePropName: 'checked',
@@ -313,7 +321,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
 
         return (
             <Form.Item>
-                <Tooltip overlay='Delete the attribute'>
+                <Tooltip title='Delete the attribute' mouseLeaveDelay={0}>
                     <Button
                         type='link'
                         className='cvat-delete-attribute-button'
@@ -414,7 +422,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
     private renderDoneButton(): JSX.Element {
         return (
             <Col>
-                <Tooltip overlay='Save the label and return'>
+                <Tooltip title='Save the label and return' mouseLeaveDelay={0}>
                     <Button
                         style={{ width: '150px' }}
                         type='primary'
@@ -437,7 +445,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
             label ? <div />
                 : (
                     <Col offset={1}>
-                        <Tooltip overlay='Save the label and create one more'>
+                        <Tooltip title='Save the label and create one more' mouseLeaveDelay={0}>
                             <Button
                                 style={{ width: '150px' }}
                                 type='primary'
@@ -459,7 +467,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
 
         return (
             <Col offset={1}>
-                <Tooltip overlay='Do not save the label and return'>
+                <Tooltip title='Do not save the label and return' mouseLeaveDelay={0}>
                     <Button
                         style={{ width: '150px' }}
                         type='danger'
@@ -503,8 +511,7 @@ class LabelForm extends React.PureComponent<Props, {}> {
                                 <Text>Attributes</Text>
                             </Col>
                         </Row>
-                    )
-                }
+                    )}
                 { attributeItems.reverse() }
                 <Row type='flex' justify='start' align='middle'>
                     { this.renderDoneButton() }

@@ -1,14 +1,14 @@
-import React from 'react';
+// Copyright (C) 2020 Intel Corporation
+//
+// SPDX-License-Identifier: MIT
 
+import React from 'react';
 import { Link } from 'react-router-dom';
 import Text from 'antd/lib/typography/Text';
-import {
-    Col,
-    Row,
-    Icon,
-} from 'antd';
+import { Row, Col } from 'antd/lib/grid';
+import Icon from 'antd/lib/icon';
 
-import { EmptyTasksIcon } from '../../icons';
+import { EmptyTasksIcon } from 'icons';
 
 export default function EmptyListComponent(): JSX.Element {
     return (
