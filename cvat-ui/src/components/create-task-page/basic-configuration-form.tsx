@@ -1,64 +1,134 @@
-import React from 'react';
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
-import {
-    Input,
-} from 'antd';
-
-import Form, { FormComponentProps } from 'antd/lib/form/Form';
+import React, { RefObject } from 'react';
+import Input from 'antd/lib/input';
+import Text from 'antd/lib/typography/Text';
+import Tooltip from 'antd/lib/tooltip';
+import Form, { FormInstance } from 'antd/lib/form';
+import { QuestionCircleOutlined } from '@ant-design/icons';
 
 export interface BaseConfiguration {
     name: string;
 }
 
-type Props = FormComponentProps & {
-    onSubmit(values: BaseConfiguration): void;
-};
+interface Props {
+    onChange(values: BaseConfiguration): void;
+    many: boolean;
+    exampleMultiTaskName?: string;
+}
 
-class BasicConfigurationForm extends React.PureComponent<Props> {
-    public submit(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            const {
-                form,
-                onSubmit,
-            } = this.props;
+type InputRef = React.ComponentRef<typeof Input>;
 
-            form.validateFields((error, values): void => {
-                if (!error) {
-                    onSubmit({
-                        name: values.name,
-                    });
-                    resolve();
-                } else {
-                    reject();
-                }
-            });
+export default class BasicConfigurationForm extends React.PureComponent<Props> {
+    private formRef: RefObject<FormInstance>;
+    private inputRef: RefObject<InputRef>;
+    private initialName: string;
+
+    public constructor(props: Props) {
+        super(props);
+        this.formRef = React.createRef<FormInstance>();
+        this.inputRef = React.createRef<InputRef>();
+
+        const { many } = this.props;
+        this.initialName = many ? '{{file_name}}' : '';
+    }
+
+    componentDidMount(): void {
+        const { onChange } = this.props;
+        onChange({
+            name: this.initialName,
         });
     }
 
+    private handleChangeName(e: React.ChangeEvent<HTMLInputElement>): void {
+        const { onChange } = this.props;
+        onChange({
+            name: e.target.value,
+        });
+    }
+
+    public submit(): Promise<void> {
+        if (this.formRef.current) {
+            return this.formRef.current.validateFields();
+        }
+
+        return Promise.reject(new Error('Form ref is empty'));
+    }
+
     public resetFields(): void {
-        const { form } = this.props;
-        form.resetFields();
+        if (this.formRef.current) {
+            this.formRef.current.resetFields();
+        }
+    }
+
+    public focus(): void {
+        if (this.inputRef.current) {
+            this.inputRef.current.focus();
+        }
     }
 
     public render(): JSX.Element {
-        const { form } = this.props;
-        const { getFieldDecorator } = form;
+        const { many, exampleMultiTaskName } = this.props;
 
         return (
-            <Form onSubmit={(e: React.FormEvent): void => e.preventDefault()}>
-                <Form.Item hasFeedback label={<span>Name</span>}>
-                    { getFieldDecorator('name', {
-                        rules: [{
+            <Form ref={this.formRef} layout='vertical'>
+                <Form.Item
+                    className={many ? 'cvat-task-name-field-has-tooltip' : ''}
+                    hasFeedback
+                    name='name'
+                    label={<span>Name</span>}
+                    rules={[
+                        {
                             required: true,
-                            message: 'Please, specify a name',
-                        }],
-                    })(
-                        <Input />,
-                    ) }
+                            message: 'Task name cannot be empty',
+                        },
+                    ]}
+                    initialValue={this.initialName}
+                >
+                    <Input
+                        ref={this.inputRef}
+                        onChange={(e) => this.handleChangeName(e)}
+                    />
                 </Form.Item>
+                {many ? (
+                    <Text type='secondary'>
+                        <Tooltip title={() => (
+                            <>
+                                You can use in the template:
+                                <ul>
+                                    <li>
+                                        some_text - any text
+                                    </li>
+                                    <li>
+                                        {'{{'}
+                                        index
+                                        {'}}'}
+                                        &nbsp;- index file in set
+                                    </li>
+                                    <li>
+                                        {'{{'}
+                                        file_name
+                                        {'}}'}
+                                        &nbsp;- name of file
+                                    </li>
+                                </ul>
+                                Example:&nbsp;
+                                <i>
+                                    {exampleMultiTaskName || 'Task name 1 - video_1.mp4'}
+                                </i>
+                            </>
+                        )}
+                        >
+                            When forming the name, a template is used.
+                            {' '}
+                            <QuestionCircleOutlined />
+                        </Tooltip>
+                    </Text>
+                ) : null}
             </Form>
         );
     }
 }
-
-export default Form.create<Props>()(BasicConfigurationForm);

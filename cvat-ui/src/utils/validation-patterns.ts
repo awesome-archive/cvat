@@ -1,8 +1,12 @@
+// Copyright (C) 2021-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
 const validationPatterns = {
     validatePasswordLength: {
-        pattern: /(?=.{8,})/,
-        message: 'Password must have at least 8 characters',
+        pattern: /^(?=.{8,256}$)/,
+        message: 'Password must be between 8 and 256 characters',
     },
 
     passwordContainsNumericCharacters: {
@@ -21,18 +25,28 @@ const validationPatterns = {
     },
 
     validateUsernameLength: {
-        pattern: /(?=.{5,})/,
-        message: 'Username must have at least 8 characters',
+        pattern: /^.{5,150}$/u,
+        message: 'Username must be between 5 and 150 characters',
     },
 
     validateUsernameCharacters: {
-        pattern: /^[a-zA-Z0-9_-]{5,}$/,
-        message: 'Only characters (a-z), (A-Z), (0-9), -, _ are available',
+        pattern: /^[\p{L}\p{N}_@.+-]+$/u,
+        message: 'Only letters, numbers, and @/./+/-/_ characters are available',
     },
 
+    /*
+        \p{Pd} - dash connectors
+        \p{Pc} - connector punctuations
+        \p{Cf} - invisible formatting indicator
+        \p{L} - any alphabetic character
+        Useful links:
+        https://stackoverflow.com/questions/4323386/multi-language-input-validation-with-utf-8-encoding
+        https://stackoverflow.com/questions/280712/javascript-unicode-regexes
+        https://stackoverflow.com/questions/6377407/how-to-validate-both-chinese-unicode-and-english-name
+    */
     validateName: {
-        // eslint-disable-next-line
-        pattern: /^[a-zA-Z]{2,}(([',. -][a-zA-Z ])?[a-zA-Z]*)*$/,
+
+        pattern: /^(\p{L}|\p{Pd}|\p{Cf}|\p{Pc}|['\s]){2,}$/gu,
         message: 'Invalid name',
     },
 
@@ -52,16 +66,20 @@ const validationPatterns = {
     },
 
     validateURL: {
-        // eslint-disable-next-line
-        pattern: /^((https?:\/\/)|(git@))[^\s$.?#].[^\s]*$/, // url, ssh url, ip
+
+        pattern: /^(https?:\/\/)[^\s$.?#].[^\s]*$/, // url, ip
         message: 'URL is not valid',
     },
 
-    validatePath: {
-        // eslint-disable-next-line
-        pattern: /^\[\/?([A-z0-9-_+]+\/)*([A-z0-9]+\.(xml|zip|json))\]$/,
-        message: 'Git path is not valid',
+    validateOrganizationSlug: {
+        pattern: /^[a-zA-Z\d]+$/,
+        message: 'Only Latin characters and numbers are allowed',
+    },
+
+    validatePhoneNumber: {
+        pattern: /^[+]*[-\s0-9]*$/g,
+        message: 'Input phone number is not correct',
     },
 };
 
-export default { ...validationPatterns };
+export default validationPatterns;

@@ -1,9 +1,20 @@
-import { AnyAction, Dispatch, ActionCreator } from 'redux';
-import { ThunkAction } from 'redux-thunk';
-import { TasksQuery } from '../reducers/interfaces';
-import { getInferenceStatusAsync } from './models-actions';
+// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
-import getCore from '../core';
+import { AnyAction } from 'redux';
+import { TasksQuery } from 'reducers';
+import {
+    getCore, RQStatus, Storage, StorageLocation, Task, UpdateStatusData, Request, FramesMetaData,
+} from 'cvat-core-wrapper';
+import { filterNull } from 'utils/filter-null';
+import { ThunkDispatch, ThunkAction } from 'utils/redux';
+
+import { ValidationMode } from 'components/create-task-page/quality-configuration-form';
+import { ResourceUpdateTypes } from 'utils/enums';
+import { getInferenceStatusAsync } from './models-actions';
+import { updateRequestProgress } from './requests-actions';
 
 const cvat = getCore();
 
@@ -11,272 +22,81 @@ export enum TasksActionTypes {
     GET_TASKS = 'GET_TASKS',
     GET_TASKS_SUCCESS = 'GET_TASKS_SUCCESS',
     GET_TASKS_FAILED = 'GET_TASKS_FAILED',
-    LOAD_ANNOTATIONS = 'LOAD_ANNOTATIONS',
-    LOAD_ANNOTATIONS_SUCCESS = 'LOAD_ANNOTATIONS_SUCCESS',
-    LOAD_ANNOTATIONS_FAILED = 'LOAD_ANNOTATIONS_FAILED',
-    DUMP_ANNOTATIONS = 'DUMP_ANNOTATIONS',
-    DUMP_ANNOTATIONS_SUCCESS = 'DUMP_ANNOTATIONS_SUCCESS',
-    DUMP_ANNOTATIONS_FAILED = 'DUMP_ANNOTATIONS_FAILED',
-    EXPORT_DATASET = 'EXPORT_DATASET',
-    EXPORT_DATASET_SUCCESS = 'EXPORT_DATASET_SUCCESS',
-    EXPORT_DATASET_FAILED = 'EXPORT_DATASET_FAILED',
     DELETE_TASK = 'DELETE_TASK',
     DELETE_TASK_SUCCESS = 'DELETE_TASK_SUCCESS',
     DELETE_TASK_FAILED = 'DELETE_TASK_FAILED',
-    CREATE_TASK = 'CREATE_TASK',
-    CREATE_TASK_STATUS_UPDATED = 'CREATE_TASK_STATUS_UPDATED',
-    CREATE_TASK_SUCCESS = 'CREATE_TASK_SUCCESS',
     CREATE_TASK_FAILED = 'CREATE_TASK_FAILED',
+    SWITCH_MOVE_TASK_MODAL_VISIBLE = 'SWITCH_MOVE_TASK_MODAL_VISIBLE',
+    GET_TASK_PREVIEW = 'GET_TASK_PREVIEW',
+    GET_TASK_PREVIEW_SUCCESS = 'GET_TASK_PREVIEW_SUCCESS',
+    GET_TASK_PREVIEW_FAILED = 'GET_TASK_PREVIEW_FAILED',
     UPDATE_TASK = 'UPDATE_TASK',
     UPDATE_TASK_SUCCESS = 'UPDATE_TASK_SUCCESS',
     UPDATE_TASK_FAILED = 'UPDATE_TASK_FAILED',
-    HIDE_EMPTY_TASKS = 'HIDE_EMPTY_TASKS',
 }
 
-function getTasks(): AnyAction {
+function getTasks(query: Partial<TasksQuery>, updateQuery: boolean, fetchingTimestamp: number): AnyAction {
     const action = {
         type: TasksActionTypes.GET_TASKS,
-        payload: {},
+        payload: {
+            fetchingTimestamp,
+            updateQuery,
+            query,
+        },
     };
 
     return action;
 }
 
-function getTasksSuccess(array: any[], previews: string[],
-    count: number, query: TasksQuery): AnyAction {
+export function getTasksSuccess(array: any[], count: number): AnyAction {
     const action = {
         type: TasksActionTypes.GET_TASKS_SUCCESS,
         payload: {
-            previews,
             array,
             count,
-            query,
         },
     };
 
     return action;
 }
 
-function getTasksFailed(error: any, query: TasksQuery): AnyAction {
+function getTasksFailed(error: any): AnyAction {
     const action = {
         type: TasksActionTypes.GET_TASKS_FAILED,
-        payload: {
-            error,
-            query,
-        },
+        payload: { error },
     };
 
     return action;
 }
 
-export function getTasksAsync(query: TasksQuery):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
-        dispatch(getTasks());
+export function getTasksAsync(
+    query: Partial<TasksQuery>,
+    updateQuery = true,
+): ThunkAction {
+    return async (dispatch: ThunkDispatch, getState): Promise<void> => {
+        const requestedOn = Date.now();
+        const isRequestRelevant = (): boolean => (
+            getState().tasks.fetchingTimestamp === requestedOn
+        );
 
-        // We need remove all keys with null values from query
-        const filteredQuery = { ...query };
-        for (const key in filteredQuery) {
-            if (filteredQuery[key] === null) {
-                delete filteredQuery[key];
-            }
-        }
+        dispatch(getTasks(query, updateQuery, requestedOn));
+        const filteredQuery = filterNull(query);
 
         let result = null;
         try {
             result = await cvat.tasks.get(filteredQuery);
         } catch (error) {
-            dispatch(getTasksFailed(error, query));
-            return;
-        }
-
-        const array = Array.from(result);
-        const previews = [];
-        const promises = array
-            .map((task): string => (task as any).frames.preview());
-
-        dispatch(
-            getInferenceStatusAsync(
-                array.map(
-                    (task: any): number => task.id,
-                ),
-            ),
-        );
-
-        for (const promise of promises) {
-            try {
-                // a tricky moment
-                // await is okay in loop in this case, there aren't any performance bottleneck
-                // because all server requests have been already sent in parallel
-
-                // eslint-disable-next-line no-await-in-loop
-                previews.push(await promise);
-            } catch (error) {
-                previews.push('');
+            if (isRequestRelevant()) {
+                dispatch(getTasksFailed(error));
             }
-        }
-
-        dispatch(getTasksSuccess(array, previews, result.count, query));
-    };
-}
-
-function dumpAnnotation(task: any, dumper: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.DUMP_ANNOTATIONS,
-        payload: {
-            task,
-            dumper,
-        },
-    };
-
-    return action;
-}
-
-function dumpAnnotationSuccess(task: any, dumper: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.DUMP_ANNOTATIONS_SUCCESS,
-        payload: {
-            task,
-            dumper,
-        },
-    };
-
-    return action;
-}
-
-function dumpAnnotationFailed(task: any, dumper: any, error: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.DUMP_ANNOTATIONS_FAILED,
-        payload: {
-            task,
-            dumper,
-            error,
-        },
-    };
-
-    return action;
-}
-
-export function dumpAnnotationsAsync(task: any, dumper: any):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
-        try {
-            dispatch(dumpAnnotation(task, dumper));
-            const url = await task.annotations.dump(task.name, dumper);
-            const downloadAnchor = (window.document.getElementById('downloadAnchor') as HTMLAnchorElement);
-            downloadAnchor.href = url;
-            downloadAnchor.click();
-        } catch (error) {
-            dispatch(dumpAnnotationFailed(task, dumper, error));
             return;
         }
 
-        dispatch(dumpAnnotationSuccess(task, dumper));
-    };
-}
-
-function loadAnnotations(task: any, loader: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.LOAD_ANNOTATIONS,
-        payload: {
-            task,
-            loader,
-        },
-    };
-
-    return action;
-}
-
-function loadAnnotationsSuccess(task: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.LOAD_ANNOTATIONS_SUCCESS,
-        payload: {
-            task,
-        },
-    };
-
-    return action;
-}
-
-function loadAnnotationsFailed(task: any, error: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.LOAD_ANNOTATIONS_FAILED,
-        payload: {
-            task,
-            error,
-        },
-    };
-
-    return action;
-}
-
-export function loadAnnotationsAsync(task: any, loader: any, file: File):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
-        try {
-            dispatch(loadAnnotations(task, loader));
-            await task.annotations.upload(file, loader);
-        } catch (error) {
-            dispatch(loadAnnotationsFailed(task, error));
-            return;
+        if (isRequestRelevant()) {
+            const array = Array.from(result);
+            dispatch(getInferenceStatusAsync());
+            dispatch(getTasksSuccess(array, result.count));
         }
-
-        dispatch(loadAnnotationsSuccess(task));
-    };
-}
-
-function exportDataset(task: any, exporter: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.EXPORT_DATASET,
-        payload: {
-            task,
-            exporter,
-        },
-    };
-
-    return action;
-}
-
-function exportDatasetSuccess(task: any, exporter: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.EXPORT_DATASET_SUCCESS,
-        payload: {
-            task,
-            exporter,
-        },
-    };
-
-    return action;
-}
-
-function exportDatasetFailed(task: any, exporter: any, error: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.EXPORT_DATASET_FAILED,
-        payload: {
-            task,
-            exporter,
-            error,
-        },
-    };
-
-    return action;
-}
-
-export function exportDatasetAsync(task: any, exporter: any):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
-        dispatch(exportDataset(task, exporter));
-
-        try {
-            const url = await task.annotations.exportDataset(exporter.tag);
-            const downloadAnchor = (window.document.getElementById('downloadAnchor') as HTMLAnchorElement);
-            downloadAnchor.href = url;
-            downloadAnchor.click();
-        } catch (error) {
-            dispatch(exportDatasetFailed(task, exporter, error));
-        }
-
-        dispatch(exportDatasetSuccess(task, exporter));
     };
 }
 
@@ -314,9 +134,8 @@ function deleteTaskFailed(taskID: number, error: any): AnyAction {
     return action;
 }
 
-export function deleteTaskAsync(taskInstance: any):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
+export function deleteTaskAsync(taskInstance: any): ThunkAction {
+    return async (dispatch: ThunkDispatch): Promise<void> => {
         try {
             dispatch(deleteTask(taskInstance.id));
             await taskInstance.delete();
@@ -327,24 +146,6 @@ ThunkAction<Promise<void>, {}, {}, AnyAction> {
 
         dispatch(deleteTaskSuccess(taskInstance.id));
     };
-}
-
-function createTask(): AnyAction {
-    const action = {
-        type: TasksActionTypes.CREATE_TASK,
-        payload: {},
-    };
-
-    return action;
-}
-
-function createTaskSuccess(): AnyAction {
-    const action = {
-        type: TasksActionTypes.CREATE_TASK_SUCCESS,
-        payload: {},
-    };
-
-    return action;
 }
 
 function createTaskFailed(error: any): AnyAction {
@@ -358,166 +159,237 @@ function createTaskFailed(error: any): AnyAction {
     return action;
 }
 
-function createTaskUpdateStatus(status: string): AnyAction {
+function getTaskPreview(taskID: number): AnyAction {
     const action = {
-        type: TasksActionTypes.CREATE_TASK_STATUS_UPDATED,
+        type: TasksActionTypes.GET_TASK_PREVIEW,
         payload: {
-            status,
+            taskID,
         },
     };
 
     return action;
 }
 
-export function createTaskAsync(data: any):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
+function getTaskPreviewSuccess(taskID: number, preview: string): AnyAction {
+    const action = {
+        type: TasksActionTypes.GET_TASK_PREVIEW_SUCCESS,
+        payload: {
+            taskID,
+            preview,
+        },
+    };
+
+    return action;
+}
+
+function getTaskPreviewFailed(taskID: number, error: any): AnyAction {
+    const action = {
+        type: TasksActionTypes.GET_TASK_PREVIEW_FAILED,
+        payload: {
+            taskID,
+            error,
+        },
+    };
+
+    return action;
+}
+
+export function getTaskPreviewAsync(taskInstance: any): ThunkAction {
+    return async (dispatch: ThunkDispatch): Promise<void> => {
+        try {
+            dispatch(getTaskPreview(taskInstance.id));
+            const result = await taskInstance.frames.preview();
+            dispatch(getTaskPreviewSuccess(taskInstance.id, result));
+        } catch (error) {
+            dispatch(getTaskPreviewFailed(taskInstance.id, error));
+        }
+    };
+}
+
+export function updateTaskInState(task: Task): AnyAction {
+    const action = {
+        type: TasksActionTypes.UPDATE_TASK_SUCCESS,
+        payload: { task },
+    };
+
+    return action;
+}
+
+export function createTaskAsync(data: any, onProgress?: (status: string) => void):
+ThunkAction {
+    return async (dispatch): Promise<any> => {
         const description: any = {
             name: data.basic.name,
             labels: data.labels,
-            z_order: data.advanced.zOrder,
-            image_quality: 70,
+            source_storage: new Storage(data.advanced.sourceStorage ?? { location: StorageLocation.LOCAL }).toJSON(),
+            target_storage: new Storage(data.advanced.targetStorage ?? { location: StorageLocation.LOCAL }).toJSON(),
         };
 
+        if (data.projectId) {
+            description.project_id = data.projectId;
+        }
         if (data.advanced.bugTracker) {
             description.bug_tracker = data.advanced.bugTracker;
         }
         if (data.advanced.segmentSize) {
-            description.segment_size = data.advanced.segmentSize;
+            description.segment_size = +data.advanced.segmentSize;
         }
         if (data.advanced.overlapSize) {
             description.overlap = data.advanced.overlapSize;
         }
         if (data.advanced.startFrame) {
-            description.start_frame = data.advanced.startFrame;
+            description.start_frame = +data.advanced.startFrame;
         }
         if (data.advanced.stopFrame) {
-            description.stop_frame = data.advanced.stopFrame;
+            description.stop_frame = +data.advanced.stopFrame;
         }
         if (data.advanced.frameFilter) {
             description.frame_filter = data.advanced.frameFilter;
         }
-        if (data.advanced.imageQuality) {
-            description.image_quality = data.advanced.imageQuality;
+        if (data.advanced.imageQuality !== undefined) {
+            description.image_quality = +data.advanced.imageQuality;
+        }
+        if (data.advanced.dataChunkSize) {
+            description.data_chunk_size = +data.advanced.dataChunkSize;
+        }
+        if (data.advanced.copyData) {
+            description.copy_data = data.advanced.copyData;
+        }
+        if (data.subset) {
+            description.subset = data.subset;
+        }
+        if (data.cloudStorageId) {
+            description.data_cloud_storage_id = data.cloudStorageId;
+        }
+        if (data.advanced.useZipChunks !== undefined) {
+            description.use_zip_chunks = data.advanced.useZipChunks;
+        }
+        if (data.advanced.useCache !== undefined) {
+            description.use_cache = data.advanced.useCache;
+        }
+        if (data.advanced.sortingMethod !== undefined) {
+            description.sorting_method = data.advanced.sortingMethod;
+        }
+
+        const extras: {
+            [index: string]: any;
+            clientFiles: File[];
+            serverFiles: string[];
+            remoteFiles: string[];
+        } = {
+            clientFiles: data.files.local,
+            serverFiles: data.files.share.concat(data.files.cloudStorage),
+            remoteFiles: data.files.remote,
+        };
+
+        if (data.quality.validationMode !== ValidationMode.NONE) {
+            extras.validation_params = {
+                mode: data.quality.validationMode,
+                frame_selection_method: data.quality.frameSelectionMethod,
+                frame_share: data.quality.validationFramesPercent,
+                frames_per_job_share: data.quality.validationFramesPerJobPercent,
+            };
+        }
+
+        if (data.advanced.initialReplicas) {
+            extras.initial_replicas = +data.advanced.initialReplicas;
         }
 
         const taskInstance = new cvat.classes.Task(description);
-        taskInstance.clientFiles = data.files.local;
-        taskInstance.serverFiles = data.files.share;
-        taskInstance.remoteFiles = data.files.remote;
-
-        if (data.advanced.repository) {
-            const [gitPlugin] = (await cvat.plugins.list()).filter(
-                (plugin: any): boolean => plugin.name === 'Git',
-            );
-
-            if (gitPlugin) {
-                gitPlugin.callbacks.onStatusChange = (status: string): void => {
-                    dispatch(createTaskUpdateStatus(status));
-                };
-                gitPlugin.data.task = taskInstance;
-                gitPlugin.data.repos = data.advanced.repository;
-                gitPlugin.data.lfs = data.advanced.lfs;
-            }
-        }
-
-        dispatch(createTask());
         try {
-            await taskInstance.save((status: string): void => {
-                dispatch(createTaskUpdateStatus(status));
+            const savedTask = await taskInstance.save(extras, {
+                updateStatusCallback(updateData: Request | UpdateStatusData) {
+                    let { message } = updateData;
+                    const { status, progress } = updateData;
+                    let helperMessage = '';
+                    if (!message) {
+                        if ([RQStatus.QUEUED, RQStatus.STARTED].includes(status)) {
+                            message = 'CVAT queued the task to import';
+                            helperMessage = 'You may close the window.';
+                        } else if (status === RQStatus.FAILED) {
+                            message = 'Images processing failed';
+                        } else if (status === RQStatus.FINISHED) {
+                            message = 'Task creation finished';
+                        } else {
+                            message = 'Unknown status received';
+                        }
+                    }
+                    onProgress?.(`${message}${progress ? ` ${Math.floor(progress * 100)}%` : ''}. ${helperMessage}`);
+                    if (updateData instanceof Request) updateRequestProgress(updateData, dispatch);
+                },
             });
-            dispatch(createTaskSuccess());
+
+            dispatch(updateTaskInState(savedTask));
+            dispatch(getTaskPreviewAsync(savedTask));
+            return savedTask;
         } catch (error) {
             dispatch(createTaskFailed(error));
+            throw error;
         }
     };
 }
 
-function updateTask(): AnyAction {
-    const action = {
+function updateTask(taskId: number): AnyAction {
+    return {
         type: TasksActionTypes.UPDATE_TASK,
-        payload: {},
-    };
-
-    return action;
-}
-
-function updateTaskSuccess(task: any): AnyAction {
-    const action = {
-        type: TasksActionTypes.UPDATE_TASK_SUCCESS,
         payload: {
-            task,
+            taskId,
         },
     };
-
-    return action;
 }
 
-function updateTaskFailed(error: any, task: any): AnyAction {
-    const action = {
+function updateTaskFailed(taskId: number, error: any, updateType?: ResourceUpdateTypes): AnyAction {
+    return {
         type: TasksActionTypes.UPDATE_TASK_FAILED,
         payload: {
+            taskId,
             error,
-            task,
+            updateType,
         },
     };
-
-    return action;
 }
 
-export function updateTaskAsync(taskInstance: any):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
+export function updateTaskAsync(
+    taskInstance: Task,
+    fields: Parameters<Task['save']>[0],
+    updateType?: ResourceUpdateTypes,
+): ThunkAction<Promise<Task>> {
+    return async (dispatch: ThunkDispatch): Promise<Task> => {
         try {
-            dispatch(updateTask());
-            await taskInstance.save();
-            const [task] = await cvat.tasks.get({ id: taskInstance.id });
-            dispatch(updateTaskSuccess(task));
+            dispatch(updateTask(taskInstance.id));
+            const updated = await taskInstance.save(fields);
+            dispatch(updateTaskInState(updated));
+            return updated;
         } catch (error) {
-            // try abort all changes
-            let task = null;
-            try {
-                [task] = await cvat.tasks.get({ id: taskInstance.id });
-            } catch (fetchError) {
-                dispatch(updateTaskFailed(error, taskInstance));
-                return;
-            }
-
-            dispatch(updateTaskFailed(error, task));
+            dispatch(updateTaskFailed(taskInstance.id, error, updateType));
+            throw error;
         }
     };
 }
 
-// a job is a part of a task, so for simplify we consider
-// updating the job as updating a task
-export function updateJobAsync(jobInstance: any):
-ThunkAction<Promise<void>, {}, {}, AnyAction> {
-    return async (dispatch: ActionCreator<Dispatch>): Promise<void> => {
+export function updateTaskMetadataAsync(
+    taskInstance: Task,
+    taskMeta: FramesMetaData,
+): ThunkAction<Promise<FramesMetaData>> {
+    return async (dispatch: ThunkDispatch): Promise<FramesMetaData> => {
         try {
-            dispatch(updateTask());
-            await jobInstance.save();
-            const [task] = await cvat.tasks.get({ id: jobInstance.task.id });
-            dispatch(updateTaskSuccess(task));
+            dispatch(updateTask(taskInstance.id));
+            const updatedMeta = await taskInstance.meta.save(taskMeta);
+            dispatch(updateTaskInState(taskInstance));
+            return updatedMeta;
         } catch (error) {
-            // try abort all changes
-            let task = null;
-            try {
-                [task] = await cvat.tasks.get({ id: jobInstance.task.id });
-            } catch (fetchError) {
-                dispatch(updateTaskFailed(error, jobInstance.task));
-                return;
-            }
-
-            dispatch(updateTaskFailed(error, task));
+            dispatch(updateTaskFailed(taskInstance.id, error));
+            throw error;
         }
     };
 }
 
-export function hideEmptyTasks(hideEmpty: boolean): AnyAction {
+export function switchMoveTaskModalVisible(visible: boolean, taskId: number | null = null): AnyAction {
     const action = {
-        type: TasksActionTypes.HIDE_EMPTY_TASKS,
+        type: TasksActionTypes.SWITCH_MOVE_TASK_MODAL_VISIBLE,
         payload: {
-            hideEmpty,
+            taskId,
+            visible,
         },
     };
 

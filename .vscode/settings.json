@@ -1,29 +1,42 @@
 {
-    "python.pythonPath": ".env/bin/python",
-    "eslint.enable": true,
-    "eslint.validate": [
+    "eslint.probe": [
         "javascript",
         "typescript",
-        "typescriptreact",
+        "typescriptreact"
     ],
+    "eslint.onIgnoredFiles": "warn",
     "eslint.workingDirectories": [
         {
-            "directory":  "./cvat-core",
-            "changeProcessCWD": true
+            "directory": "${cwd}",
         },
         {
-            "directory":  "./cvat-canvas",
-            "changeProcessCWD": true
+            "pattern":  "cvat-*"
         },
         {
-            "directory":  "./cvat-ui",
-            "changeProcessCWD": true
-        },
-        {
-            "directory":  ".",
-            "changeProcessCWD": true
+            "directory": "tests",
+            "!cwd": true
         }
     ],
-    "python.linting.pylintEnabled": true,
-    "python.envFile": "${workspaceFolder}/.vscode/python.env"
+    "npm.exclude": "**/.env/**",
+    "files.trimTrailingWhitespace": true,
+    "python.analysis.exclude": [
+        // VS Code defaults
+        "**/node_modules",
+        "**/__pycache__",
+        ".git",
+
+        "cvat-cli/build",
+        "cvat-sdk/build",
+    ],
+    "python.defaultInterpreterPath": "${workspaceFolder}/.env/",
+    "python.testing.pytestArgs": [
+        "--rootdir","${workspaceFolder}/tests/"
+    ],
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.testing.pytestPath": "${workspaceFolder}/.env/bin/pytest",
+    "python.testing.cwd": "${workspaceFolder}/tests",
+    "cSpell.words": [
+        "crowdsourcing"
+    ]
 }

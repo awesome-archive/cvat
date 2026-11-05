@@ -1,41 +1,22 @@
-import React from 'react';
+// Copyright (C) 2021-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 
-import { CombinedState } from '../../reducers/interfaces';
-import CreateTaskComponent from '../../components/create-task-page/create-task-page';
-import { CreateTaskData } from '../../components/create-task-page/create-task-content';
-import { createTaskAsync } from '../../actions/tasks-actions';
-
-interface StateToProps {
-    status: string;
-    installedGit: boolean;
-}
+import CreateTaskComponent from 'components/create-task-page/create-task-page';
+import { CreateTaskData } from 'components/create-task-page/create-task-content';
+import { createTaskAsync } from 'actions/tasks-actions';
 
 interface DispatchToProps {
-    onCreate: (data: CreateTaskData) => void;
+    onCreate: (data: CreateTaskData, onProgress?: (status: string) => void) => Promise<any>;
 }
 
 function mapDispatchToProps(dispatch: any): DispatchToProps {
     return {
-        onCreate: (data: CreateTaskData): void => dispatch(createTaskAsync(data)),
+        onCreate: (data, onProgress) => dispatch(createTaskAsync(data, onProgress)),
     };
 }
 
-function mapStateToProps(state: CombinedState): StateToProps {
-    const { creates } = state.tasks.activities;
-    return {
-        ...creates,
-        installedGit: state.plugins.plugins.GIT_INTEGRATION,
-    };
-}
-
-function CreateTaskPageContainer(props: StateToProps & DispatchToProps): JSX.Element {
-    return (
-        <CreateTaskComponent {...props} />
-    );
-}
-
-export default connect(
-    mapStateToProps,
-    mapDispatchToProps,
-)(CreateTaskPageContainer);
+export default connect(null, mapDispatchToProps)(CreateTaskComponent);

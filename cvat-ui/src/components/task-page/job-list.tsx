@@ -1,171 +1,231 @@
-import React from 'react';
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
-import {
-    Row,
-    Col,
-    Icon,
-    Table,
-    Button,
-    Tooltip,
-} from 'antd';
-
+import React, { useCallback, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import jsonLogic from 'json-logic-js';
+import _ from 'lodash';
+import { CombinedState, JobsQuery, SelectedResourceType } from 'reducers';
+import { useHistory } from 'react-router';
+import { Row, Col } from 'antd/lib/grid';
 import Text from 'antd/lib/typography/Text';
+import Pagination from 'antd/lib/pagination';
+import Empty from 'antd/lib/empty';
+import Button from 'antd/lib/button';
+import { PlusOutlined } from '@ant-design/icons';
+import { Task, Job } from 'cvat-core-wrapper';
+import JobItem from 'components/job-item/job-item';
+import {
+    SortingComponent, ResourceFilterHOC, defaultVisibility, updateHistoryFromQuery, ResourceSelectionInfo,
+} from 'components/resource-sorting-filtering';
+import { useResourceQuery } from 'utils/hooks';
+import BulkWrapper from 'components/bulk-wrapper';
+import { selectionActions } from 'actions/selection-actions';
+import JobsCSVExportButton from 'components/jobs-page/jobs-csv-export-button';
+import DistributeJobsModal from 'components/jobs-page/distribute-jobs-modal';
+import {
+    localStorageRecentKeyword, localStorageRecentCapacity, predefinedFilterValues, config,
+} from './jobs-filter-configuration';
 
-import moment from 'moment';
-import copy from 'copy-to-clipboard';
-
-import UserSelector from './user-selector';
-import getCore from '../../core';
-
-
-const core = getCore();
-
-const baseURL = core.config.backendAPI.slice(0, -7);
+const FilteringComponent = ResourceFilterHOC(
+    config, localStorageRecentKeyword, localStorageRecentCapacity, predefinedFilterValues,
+);
 
 interface Props {
-    taskInstance: any;
-    registeredUsers: any[];
-    onJobUpdate(jobInstance: any): void;
+    task: Task;
+    onJobUpdate(job: Job, data: Parameters<Job['save']>[0]): void;
 }
 
-export default function JobListComponent(props: Props): JSX.Element {
-    const {
-        taskInstance,
-        registeredUsers,
-        onJobUpdate,
-    } = props;
+function filterJobs(jobs: Job[], query: JobsQuery): Job[] {
+    let result = jobs;
 
-    const { jobs } = taskInstance;
-    const columns = [{
-        title: 'Job',
-        dataIndex: 'job',
-        key: 'job',
-        render: (id: number): JSX.Element => (<a href={`${baseURL}/?id=${id}`}>{ `Job #${id}` }</a>),
-    }, {
-        title: 'Frames',
-        dataIndex: 'frames',
-        key: 'frames',
-        className: 'cvat-text-color',
-    }, {
-        title: 'Status',
-        dataIndex: 'status',
-        key: 'status',
-        render: (status: string): JSX.Element => {
-            let progressColor = null;
-            if (status === 'completed') {
-                progressColor = 'cvat-job-completed-color';
-            } else if (status === 'validation') {
-                progressColor = 'cvat-job-validation-color';
-            } else {
-                progressColor = 'cvat-job-annotation-color';
-            }
-
-            return (
-                <Text strong className={progressColor}>{ status }</Text>
-            );
-        },
-    }, {
-        title: 'Started on',
-        dataIndex: 'started',
-        key: 'started',
-        className: 'cvat-text-color',
-    }, {
-        title: 'Duration',
-        dataIndex: 'duration',
-        key: 'duration',
-        className: 'cvat-text-color',
-    }, {
-        title: 'Assignee',
-        dataIndex: 'assignee',
-        key: 'assignee',
-        render: (jobInstance: any): JSX.Element => {
-            const assignee = jobInstance.assignee ? jobInstance.assignee.username : null;
-
-            return (
-                <UserSelector
-                    users={registeredUsers}
-                    value={assignee}
-                    onChange={(value: string): void => {
-                        let [userInstance] = [...registeredUsers]
-                            .filter((user: any) => user.username === value);
-
-                        if (userInstance === undefined) {
-                            userInstance = null;
-                        }
-
-                        // eslint-disable-next-line
-                        jobInstance.assignee = userInstance;
-                        onJobUpdate(jobInstance);
-                    }}
-                />
-            );
-        },
-    }];
-
-    let completed = 0;
-    const data = jobs.reduce((acc: any[], job: any) => {
-        if (job.status === 'completed') {
-            completed++;
+    if (query.sort) {
+        let sort = query.sort.split(',');
+        const orders = sort.map((elem: string) => (elem.startsWith('-') ? 'desc' : 'asc'));
+        sort = sort.map((elem: string) => (elem.startsWith('-') ? elem.substring(1) : elem));
+        const assigneeInd = sort.indexOf('assignee');
+        if (assigneeInd > -1) {
+            sort[assigneeInd] = 'assignee.username';
         }
+        result = _.orderBy(result, sort, orders);
+    }
+    if (query.filter) {
+        const converted = result.map((job) => ({
+            assignee: job.assignee ? job.assignee.username : null,
+            stage: job.stage,
+            state: job.state,
+            dimension: job.dimension,
+            updatedDate: job.updatedDate,
+            type: job.type,
+            id: job.id,
+            parent_job_id: job.parentJobId,
+        }));
+        const filter = JSON.parse(query.filter);
+        result = result.filter((job, index) => jsonLogic.apply(filter, converted[index]));
+    }
 
-        const created = moment(props.taskInstance.createdDate);
+    return result;
+}
 
-        acc.push({
-            key: job.id,
-            job: job.id,
-            frames: `${job.startFrame}-${job.stopFrame}`,
-            status: `${job.status}`,
-            started: `${created.format('MMMM Do YYYY HH:MM')}`,
-            duration: `${moment.duration(moment(moment.now()).diff(created)).humanize()}`,
-            assignee: job,
-        });
+function setUpJobsList(jobs: Job[], newPage: number, pageSize: number): Job[] {
+    return jobs.slice((newPage - 1) * pageSize, newPage * pageSize);
+}
 
-        return acc;
+function JobListComponent(props: Readonly<Props>): JSX.Element {
+    const { task: taskInstance, onJobUpdate } = props;
+    const [visibility, setVisibility] = useState(defaultVisibility);
+
+    const history = useHistory();
+    const { id: taskId } = taskInstance;
+    const { jobs } = taskInstance;
+
+    const defaultQuery: JobsQuery = {
+        page: 1,
+        pageSize: 10,
+        sort: null,
+        search: null,
+        filter: '{"and":[{"!":{"var":"parent_job_id"}}]}',
+    };
+    const query = useResourceQuery<JobsQuery>(defaultQuery, defaultQuery);
+
+    const filteredJobs = filterJobs(jobs, query);
+    const jobIds = filteredJobs.map((job) => job.id);
+    const viewedJobs = setUpJobsList(filteredJobs, query.page, query.pageSize);
+
+    const setQuery = useCallback((nextQuery: JobsQuery) => {
+        const nextSearch = updateHistoryFromQuery(nextQuery);
+
+        if (nextSearch === (history.location.search || '')) return;
+
+        if (query.filter === nextQuery.filter && query.sort === nextQuery.sort) {
+            history.replace({ search: nextSearch });
+        } else {
+            history.push({ ...history.location, search: nextSearch });
+        }
+    }, [history.location, query]);
+
+    const onCreateJob = useCallback(() => {
+        history.push(`/tasks/${taskId}/jobs/create`);
     }, []);
 
-    return (
-        <div className='cvat-task-job-list'>
-            <Row type='flex' justify='space-between' align='middle'>
-                <Col>
-                    <Text className='cvat-text-color cvat-jobs-header'> Jobs </Text>
-                    <Tooltip trigger='click' title='Copied to clipboard!'>
-                        <Button
-                            type='link'
-                            onClick={(): void => {
-                                let serialized = '';
-                                const [latestJob] = [...taskInstance.jobs].reverse();
-                                for (const job of taskInstance.jobs) {
-                                    serialized += `Job #${job.id}`.padEnd(`${latestJob.id}`.length + 6, ' ');
-                                    serialized += `: ${baseURL}/?id=${job.id}`
-                                        .padEnd(`${latestJob.id}`.length + baseURL.length + 8, ' ');
-                                    serialized += `: [${job.startFrame}-${job.stopFrame}]`
-                                        .padEnd(`${latestJob.startFrame}${latestJob.stopFrame}`.length + 5, ' ');
+    const dispatch = useDispatch();
+    const selectedCount = useSelector((state: CombinedState) => state.jobs.selected.length);
+    const onSelectAll = useCallback(() => {
+        const allJobIds = viewedJobs.flatMap((job) => [
+            job.id,
+        ]);
+        dispatch(selectionActions.selectResources(allJobIds, SelectedResourceType.JOBS));
+    }, [dispatch, filteredJobs]);
 
-                                    if (job.assignee) {
-                                        serialized += `\t assigned to: ${job.assignee.username}`;
-                                    }
-                                    serialized += '\n';
-                                }
-                                copy(serialized);
+    const onApplyFilter = useCallback((filter: string | null) => {
+        setQuery({
+            ...query,
+            filter: filter || '{}',
+        });
+    }, [query]);
+
+    return (
+        <>
+            <div className='cvat-jobs-list-wrapper'>
+                <Row>
+                    <Col>
+                        <Text className='cvat-text-color cvat-jobs-header'> Jobs </Text>
+                        <ResourceSelectionInfo selectedCount={selectedCount} onSelectAll={onSelectAll} />
+                    </Col>
+                </Row>
+                <Row>
+                    <div className='cvat-jobs-list-filters-wrapper'>
+                        <SortingComponent
+                            visible={visibility.sorting}
+                            onVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, sorting: visible })
+                            )}
+                            defaultFields={query.sort?.split(',') || ['-ID']}
+                            sortingFields={['ID', 'Assignee', 'State', 'Stage']}
+                            onApplySorting={(sort: string | null) => {
+                                setQuery({
+                                    ...query,
+                                    sort,
+                                });
                             }}
+                        />
+                        <FilteringComponent
+                            value={query.filter}
+                            predefinedVisible={visibility.predefined}
+                            builderVisible={visibility.builder}
+                            recentVisible={visibility.recent}
+                            onPredefinedVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, predefined: visible })
+                            )}
+                            onBuilderVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, builder: visible })
+                            )}
+                            onRecentVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, builder: visibility.builder, recent: visible })
+                            )}
+                            onApplyFilter={onApplyFilter}
+                        />
+                        <JobsCSVExportButton predefinedData={filteredJobs} />
+                    </div>
+                    <div className='cvat-job-add-wrapper'>
+                        <Button onClick={onCreateJob} type='primary' className='cvat-create-job' icon={<PlusOutlined />} />
+                    </div>
+                </Row>
+            </div>
+            {jobIds.length ? (
+                <div className='cvat-task-job-list'>
+                    <Col className='cvat-jobs-list'>
+                        <BulkWrapper
+                            currentResourceIds={jobIds}
+                            resourceType={SelectedResourceType.JOBS}
                         >
-                            <Icon type='copy' theme='twoTone' />
-                            Copy
-                        </Button>
-                    </Tooltip>
-                </Col>
+                            {(selectProps) => (
+                                viewedJobs
+                                    .map((job: Job, idx: number) => {
+                                        const { selected, onClick } = selectProps(job.id, idx);
+                                        return (
+                                            <JobItem
+                                                key={job.id}
+                                                job={job}
+                                                task={taskInstance}
+                                                onJobUpdate={onJobUpdate}
+                                                selected={selected}
+                                                onClick={onClick}
+                                                onApplyFilter={onApplyFilter}
+                                            />
+                                        );
+                                    })
+                            )}
+                        </BulkWrapper>
+                    </Col>
+                </div>
+            ) : (
+                <Empty description='No jobs found' />
+            )}
+            <Row justify='center' align='middle'>
                 <Col>
-                    <Text className='cvat-text-color'>
-                        {`${completed} of ${data.length} jobs`}
-                    </Text>
+                    <Pagination
+                        className='cvat-tasks-pagination'
+                        onChange={(page: number, pageSize: number) => {
+                            setQuery({
+                                ...query,
+                                page,
+                                pageSize,
+                            });
+                        }}
+                        total={filteredJobs.length}
+                        pageSize={query.pageSize}
+                        current={query.page}
+                        showQuickJumper
+                        showSizeChanger
+                    />
                 </Col>
             </Row>
-            <Table
-                className='cvat-task-jobs-table'
-                columns={columns}
-                dataSource={data}
-                size='small'
-            />
-        </div>
+            <DistributeJobsModal listedJobIds={jobIds} />
+        </>
     );
 }
+
+export default React.memo(JobListComponent);

@@ -1,52 +1,66 @@
-/*
-* Copyright (C) 2019 Intel Corporation
-* SPDX-License-Identifier: MIT
-*/
+// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
 import {
-    Rotation,
-    DrawData,
-    MergeData,
-    SplitData,
-    GroupData,
-    CanvasModel,
-    CanvasModelImpl,
+    DrawData, MergeData, SplitData, GroupData, SelectData,
+    JoinData, SliceData, MasksEditData,
+    InteractionData as _InteractionData,
+    InteractionResult as _InteractionResult,
+    CanvasModel, CanvasModelImpl, RectDrawingMethod,
+    CuboidDrawingMethod, Configuration, Geometry, Mode,
+    HighlightSeverity as _HighlightSeverity,
+    CanvasHistorySource,
+    PolyEditData, RenderData as _RenderData,
 } from './canvasModel';
+import { Master } from './master';
+import { CanvasController, CanvasControllerImpl } from './canvasController';
+import { CanvasView, CanvasViewImpl } from './canvasView';
+import { finalizePastedShapePoints } from './paste';
 
-import {
-    Master,
-} from './master';
-
-import {
-    CanvasController,
-    CanvasControllerImpl,
-} from './canvasController';
-
-import {
-    CanvasView,
-    CanvasViewImpl,
-} from './canvasView';
-
-
-import '../css/canvas.css';
-
+import '../scss/canvas.scss';
 
 interface Canvas {
     html(): HTMLDivElement;
-    setup(frameData: any, objectStates: any[]): void;
-    activate(clientID: number, attributeID?: number): void;
-    rotate(rotation: Rotation, remember?: boolean): void;
+    setup(frameData: any, objectStates: any[], renderData?: RenderData): void;
+    setupIssueRegions(issueRegions: Record<number, { hidden: boolean; points: number[] }>): void;
+    translateFromSVG(points: number[]): number[];
+    setupConflictRegions(clientID: number): number[];
+    activate(clientID: number | null, attributeID?: number): void;
+    highlight(clientIDs: number[] | null, severity: HighlightSeverity | null): void;
+    rotate(rotationAngle: number): void;
     focus(clientID: number, padding?: number): void;
     fit(): void;
     grid(stepX: number, stepY: number): void;
 
+    interact(interactionData: InteractionData): void;
     draw(drawData: DrawData): void;
+    edit(editData: MasksEditData | PolyEditData): void;
     group(groupData: GroupData): void;
+    join(joinData: JoinData): void;
+    slice(sliceData: SliceData): void;
     split(splitData: SplitData): void;
     merge(mergeData: MergeData): void;
     select(objectState: any): void;
+    selectObjects(selectData: SelectData): void;
+    setSelectedObjects(clientIDs: number[]): void;
 
+    fitCanvas(): void;
+    bitmap(enable: boolean): void;
+    selectRegion(enable: boolean): void;
+    dragCanvas(enable: boolean): void;
+    zoomCanvas(enable: boolean): void;
+
+    mode(): Mode;
+    undo(): boolean;
+    redo(): boolean;
     cancel(): void;
+    configure(configuration: Configuration): void;
+    isAbleToChangeFrame(): boolean;
+    destroy(): void;
+
+    readonly geometry: Geometry;
 }
 
 class CanvasImpl implements Canvas {
@@ -64,19 +78,55 @@ class CanvasImpl implements Canvas {
         return this.view.html();
     }
 
-    public setup(frameData: any, objectStates: any[]): void {
-        this.model.setup(frameData, objectStates);
+    public setup(frameData: any, objectStates: any[], renderData?: RenderData): void {
+        this.model.setup(frameData, objectStates, renderData);
     }
 
-    public activate(clientID: number, attributeID: number = null): void {
+    public setupIssueRegions(issueRegions: Record<number, { hidden: boolean; points: number[] }>): void {
+        this.model.setupIssueRegions(issueRegions);
+    }
+
+    public translateFromSVG(points: number[]): number[] {
+        return this.view.translateFromSVG(points);
+    }
+
+    public setupConflictRegions(clientID: number): number[] {
+        return this.view.setupConflictRegions(clientID);
+    }
+
+    public fitCanvas(): void {
+        this.model.fitCanvas(this.view.html().clientWidth, this.view.html().clientHeight);
+    }
+
+    public bitmap(enable: boolean): void {
+        this.model.bitmap(enable);
+    }
+
+    public selectRegion(enable: boolean): void {
+        this.model.selectRegion(enable);
+    }
+
+    public dragCanvas(enable: boolean): void {
+        this.model.dragCanvas(enable);
+    }
+
+    public zoomCanvas(enable: boolean): void {
+        this.model.zoomCanvas(enable);
+    }
+
+    public activate(clientID: number | null, attributeID: number | null = null): void {
         this.model.activate(clientID, attributeID);
     }
 
-    public rotate(rotation: Rotation, remember: boolean = false): void {
-        this.model.rotate(rotation, remember);
+    public highlight(clientIDs: number[], severity: HighlightSeverity | null = null): void {
+        this.model.highlight(clientIDs, severity);
     }
 
-    public focus(clientID: number, padding: number = 0): void {
+    public rotate(rotationAngle: number): void {
+        this.model.rotate(rotationAngle);
+    }
+
+    public focus(clientID: number, padding = 0): void {
         this.model.focus(clientID, padding);
     }
 
@@ -88,8 +138,16 @@ class CanvasImpl implements Canvas {
         this.model.grid(stepX, stepY);
     }
 
+    public interact(interactionData: InteractionData): void {
+        this.model.interact(interactionData);
+    }
+
     public draw(drawData: DrawData): void {
         this.model.draw(drawData);
+    }
+
+    public edit(editData: MasksEditData | PolyEditData): void {
+        this.model.edit(editData);
     }
 
     public split(splitData: SplitData): void {
@@ -100,6 +158,14 @@ class CanvasImpl implements Canvas {
         this.model.group(groupData);
     }
 
+    public join(joinData: JoinData): void {
+        this.model.join(joinData);
+    }
+
+    public slice(sliceData: SliceData): void {
+        this.model.slice(sliceData);
+    }
+
     public merge(mergeData: MergeData): void {
         this.model.merge(mergeData);
     }
@@ -108,13 +174,53 @@ class CanvasImpl implements Canvas {
         this.model.select(objectState);
     }
 
+    public selectObjects(selectData: SelectData): void {
+        this.model.selectObjects(selectData);
+    }
+
+    public setSelectedObjects(clientIDs: number[]): void {
+        this.model.setSelectedObjects(clientIDs);
+    }
+
+    public mode(): Mode {
+        return this.model.mode;
+    }
+
+    public undo(): boolean {
+        return this.view.undo();
+    }
+
+    public redo(): boolean {
+        return this.view.redo();
+    }
+
     public cancel(): void {
         this.model.cancel();
     }
+
+    public configure(configuration: Configuration): void {
+        this.model.configure(configuration);
+    }
+
+    public isAbleToChangeFrame(): boolean {
+        return this.model.isAbleToChangeFrame();
+    }
+
+    public get geometry(): Geometry {
+        return this.model.geometry;
+    }
+
+    public destroy(): void {
+        this.model.destroy();
+    }
 }
 
+export type InteractionData = _InteractionData;
+export type InteractionResult = _InteractionResult;
+export type HighlightSeverity = _HighlightSeverity;
+export type RenderData = _RenderData;
 
 export {
-    CanvasImpl as Canvas,
-    Rotation,
+    CanvasImpl as Canvas, RectDrawingMethod, CuboidDrawingMethod, Mode as CanvasMode, CanvasHistorySource,
+    finalizePastedShapePoints,
 };

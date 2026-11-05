@@ -1,28 +1,27 @@
-import React from 'react';
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 
-import {
-    TasksQuery,
-    CombinedState,
-    ActiveInference,
-} from '../../reducers/interfaces';
-
-import TaskItemComponent from '../../components/tasks-page/task-item';
-
-import {
-    getTasksAsync,
-} from '../../actions/tasks-actions';
+import { Task, Request } from 'cvat-core-wrapper';
+import { CombinedState, ActiveInference, PluginComponent } from 'reducers';
+import TaskItemComponent from 'components/tasks-page/task-item';
+import { updateTaskInState as updateTaskInStateAction, getTaskPreviewAsync } from 'actions/tasks-actions';
+import { cancelInferenceAsync } from 'actions/models-actions';
 
 interface StateToProps {
     deleted: boolean;
-    hidden: boolean;
-    previewImage: string;
     taskInstance: any;
     activeInference: ActiveInference | null;
+    activeRequest: Request | null;
+    ribbonPlugins: PluginComponent[];
 }
 
 interface DispatchToProps {
-    getTasks: (query: TasksQuery) => void;
+    updateTaskInState(task: Task): void;
+    cancelAutoAnnotation(): void;
 }
 
 interface OwnProps {
@@ -33,34 +32,32 @@ interface OwnProps {
 function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps {
     const task = state.tasks.current[own.idx];
     const { deletes } = state.tasks.activities;
+    const { requests } = state.requests;
+    const activeRequest = Object.values(requests).find((request: Request) => {
+        const { operation: { type, taskID } } = request;
+        return type === 'create:task' && task.id === taskID;
+    });
     const id = own.taskID;
 
     return {
-        hidden: state.tasks.hideEmpty && task.instance.jobs.length === 0,
-        deleted: deletes.byTask[id] ? deletes.byTask[id] === true : false,
-        previewImage: task.preview,
-        taskInstance: task.instance,
+        deleted: id in deletes ? deletes[id] === true : false,
+        taskInstance: task,
         activeInference: state.models.inferences[id] || null,
+        ribbonPlugins: state.plugins.components.taskItem.ribbon,
+        activeRequest: activeRequest || null,
     };
 }
 
-function mapDispatchToProps(dispatch: any): DispatchToProps {
+function mapDispatchToProps(dispatch: any, own: OwnProps): DispatchToProps {
     return {
-        getTasks: (query: TasksQuery): void => {
-            dispatch(getTasksAsync(query));
+        cancelAutoAnnotation(): void {
+            dispatch(cancelInferenceAsync(own.taskID));
+        },
+        updateTaskInState(task: Task): void {
+            dispatch(updateTaskInStateAction(task));
+            dispatch(getTaskPreviewAsync(task));
         },
     };
 }
 
-type TasksItemContainerProps = StateToProps & DispatchToProps & OwnProps;
-
-function TaskItemContainer(props: TasksItemContainerProps): JSX.Element {
-    return (
-        <TaskItemComponent {...props} />
-    );
-}
-
-export default connect(
-    mapStateToProps,
-    mapDispatchToProps,
-)(TaskItemContainer);
+export default connect(mapStateToProps, mapDispatchToProps)(TaskItemComponent);

@@ -1,15 +1,19 @@
-import React from 'react';
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import { connect } from 'react-redux';
 import { withRouter } from 'react-router-dom';
 import { RouteComponentProps } from 'react-router';
 
-import AnnotationPageComponent from '../../components/annotation-page/annotation-page';
-import { getTasksAsync } from '../../actions/tasks-actions';
-
+import AnnotationPageComponent from 'components/annotation-page/annotation-page';
 import {
-    CombinedState,
-    Task,
-} from '../../reducers/interfaces';
+    getJobAsync, saveLogsAsync, changeFrameAsync,
+    closeJob as closeJobAction,
+} from 'actions/annotation-actions';
+
+import { CombinedState, Workspace } from 'reducers';
 
 type OwnProps = RouteComponentProps<{
     tid: string;
@@ -17,67 +21,111 @@ type OwnProps = RouteComponentProps<{
 }>;
 
 interface StateToProps {
-    jobInstance: any | null | undefined;
+    job: any | null | undefined;
+    frameNumber: number;
     fetching: boolean;
+    annotationsInitialized: boolean;
+    workspace: Workspace;
 }
 
 interface DispatchToProps {
     getJob(): void;
+    changeFrame(frame: number): void;
+    saveLogs(): void;
+    closeJob(): void;
 }
 
 function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps {
-    const { tasks } = state;
-    const {
-        gettingQuery,
-        current,
-    } = tasks;
     const { params } = own.match;
-    const taskID = +params.tid;
     const jobID = +params.jid;
+    const {
+        annotation: {
+            job: { requestedId, instance: job, fetching },
+            workspace,
+            player: {
+                frame: {
+                    number: frameNumber,
+                },
+            },
+        },
+    } = state;
 
-    const filteredTasks = current
-        .filter((_task: Task) => _task.instance.id === taskID);
-    const task = filteredTasks[0] || (gettingQuery.id === taskID || Number.isNaN(taskID)
-        ? undefined : null);
-
-    const job = task ? task.instance.jobs
-        .filter((_job: any) => _job.id === jobID)[0] : task;
+    const annotationsInitialized = workspace === Workspace.AUDIO ?
+        true : state.annotation.annotations.initialized;
 
     return {
-        jobInstance: job,
-        fetching: tasks.fetching,
+        job: jobID === requestedId || (Number.isNaN(jobID) && Number.isNaN(requestedId)) ? job : null,
+        fetching,
+        workspace,
+        frameNumber,
+        annotationsInitialized,
     };
 }
 
 function mapDispatchToProps(dispatch: any, own: OwnProps): DispatchToProps {
     const { params } = own.match;
     const taskID = +params.tid;
+    const jobID = +params.jid;
+    const searchParams = new URLSearchParams(window.location.search);
+    const initialFilters: object[] = [];
+    const initialOpenGuide = searchParams.has('openGuide');
+
+    const parsedPointsCount = +(searchParams.get('defaultPointsCount') || 'NaN');
+    const defaultLabel = searchParams.get('defaultLabel') || null;
+    const defaultPointsCount = Number.isInteger(parsedPointsCount) && parsedPointsCount >= 1 ? parsedPointsCount : null;
+    const defaultRotated = searchParams.get('rotated') === 'true';
+    const defaultWorkspace = searchParams.get('defaultWorkspace')?.toUpperCase();
+    const initialWorkspace = Object.entries(Workspace).find(([key]) => (key === defaultWorkspace)) ?? null;
+
+    const parsedFrame = +(searchParams.get('frame') || 'NaN');
+    const initialFrame = Number.isInteger(parsedFrame) && parsedFrame >= 0 ? parsedFrame : null;
+
+    if (searchParams.has('serverID') && searchParams.has('type')) {
+        const serverID = searchParams.get('serverID');
+        const type = searchParams.get('type');
+        if (serverID && !Number.isNaN(+serverID)) {
+            initialFilters.push({
+                and: [{ '==': [{ var: 'serverID' }, serverID] }, { '==': [{ var: 'type' }, type] }],
+            });
+        }
+    }
+
+    const initialSize = searchParams.size;
+    searchParams.delete('frame');
+    searchParams.delete('serverID');
+    searchParams.delete('type');
+    searchParams.delete('openGuide');
+
+    if (searchParams.size !== initialSize) {
+        own.history.replace(`${own.history.location.pathname}?${searchParams.toString()}`);
+    }
 
     return {
         getJob(): void {
-            dispatch(getTasksAsync({
-                id: taskID,
-                page: 1,
-                search: null,
-                owner: null,
-                assignee: null,
-                name: null,
-                status: null,
-                mode: null,
+            dispatch(getJobAsync({
+                taskID,
+                jobID,
+                initialFrame,
+                initialFilters,
+                queryParameters: {
+                    initialOpenGuide,
+                    defaultLabel,
+                    defaultPointsCount,
+                    defaultRotated,
+                    ...(initialWorkspace ? { initialWorkspace: initialWorkspace[1] } : { initialWorkspace: null }),
+                },
             }));
+        },
+        saveLogs(): void {
+            dispatch(saveLogsAsync());
+        },
+        closeJob(): void {
+            dispatch(closeJobAction());
+        },
+        changeFrame(frame: number): void {
+            dispatch(changeFrameAsync(frame));
         },
     };
 }
 
-function AnnotationPageContainer(props: StateToProps & DispatchToProps): JSX.Element {
-    return (
-        <AnnotationPageComponent {...props} />
-    );
-}
-
-export default withRouter(
-    connect(
-        mapStateToProps,
-        mapDispatchToProps,
-    )(AnnotationPageContainer),
-);
+export default withRouter(connect(mapStateToProps, mapDispatchToProps)(AnnotationPageComponent));

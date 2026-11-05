@@ -1,33 +1,31 @@
-# Copyright (C) 2018 Intel Corporation
+# Copyright (C) 2018-2022 Intel Corporation
 #
 # SPDX-License-Identifier: MIT
 
-from .base import *
+# Inherit parent config
+from .base import *  # pylint: disable=wildcard-import
 
 DEBUG = False
 
-INSTALLED_APPS += [
-    'mod_wsgi.server',
-]
-
-for key in RQ_QUEUES:
-    RQ_QUEUES[key]['HOST'] = 'cvat_redis'
-
-CACHEOPS_REDIS['host'] = 'cvat_redis'
+NUCLIO["HOST"] = os.getenv("CVAT_NUCLIO_HOST", "nuclio")
 
 # Django-sendfile:
-# https://github.com/johnsensible/django-sendfile
-SENDFILE_BACKEND = 'sendfile.backends.xsendfile'
+# https://github.com/moggers87/django-sendfile2
+SENDFILE_BACKEND = "django_sendfile.backends.nginx"
+SENDFILE_URL = "/"
 
-# Database
-# https://docs.djangoproject.com/en/2.0/ref/settings/#databases
-
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': 'cvat_db',
-        'NAME': 'cvat',
-        'USER': 'root',
-        'PASSWORD': os.getenv('POSTGRES_PASSWORD', ''),
-    }
+LOGGING["formatters"]["verbose_uvicorn_access"] = {
+    "()": "uvicorn.logging.AccessFormatter",
+    "format": '[{asctime}] {levelprefix} {client_addr} - "{request_line}" {status_code}',
+    "style": "{",
+}
+LOGGING["handlers"]["verbose_uvicorn_access"] = {
+    "formatter": "verbose_uvicorn_access",
+    "class": "logging.StreamHandler",
+    "stream": "ext://sys.stdout",
+}
+LOGGING["loggers"]["uvicorn.access"] = {
+    "handlers": ["verbose_uvicorn_access"],
+    "level": "INFO",
+    "propagate": False,
 }

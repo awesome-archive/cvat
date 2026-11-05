@@ -1,103 +1,240 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
+import { Col, Row } from 'antd/lib/grid';
 
 import {
-    Row,
-    Col,
-    Icon,
-    Slider,
-    Layout,
-    Input,
-    Tooltip,
-    Select,
-} from 'antd';
+    ActiveControl, NavigationType, Workspace,
+} from 'reducers';
+import { Job, JobType } from 'cvat-core-wrapper';
+import { RectDrawingMethod } from 'cvat-canvas-wrapper';
+import { KeyMap } from 'utils/mousetrap-react';
+import { Chapter } from 'cvat-core/src/frames';
+import LeftGroup from './left-group';
+import PlayerButtons from './player-buttons';
+import PlayerNavigation from './player-navigation';
+import RightGroup from './right-group';
 
-import Text from 'antd/lib/typography/Text';
+interface Props {
+    playing: boolean;
+    saving: boolean;
+    chapters: Chapter[];
+    hoveredChapter: number | null;
+    frameNumber: number;
+    frameFilename: string;
+    frameDeleted: boolean;
+    inputFrameRef: React.RefObject<HTMLInputElement>;
+    startFrame: number;
+    stopFrame: number;
+    undoAction?: string;
+    redoAction?: string;
+    workspace: Workspace;
+    undoShortcut: string;
+    redoShortcut: string;
+    drawShortcut: string;
+    playPauseShortcut: string;
+    deleteFrameShortcut: string;
+    nextFrameShortcut: string;
+    previousFrameShortcut: string;
+    forwardShortcut: string;
+    backwardShortcut: string;
+    navigationType: NavigationType;
+    focusFrameInputShortcut: string;
+    searchFrameByNameShortcut: string;
+    activeControl: ActiveControl;
+    rectDrawingMethod?: RectDrawingMethod;
+    annotationFilters: object[];
+    initialOpenGuide: boolean;
+    showSearchFrameByName: boolean;
+    keyMap: KeyMap;
+    jobInstance: Job;
+    ranges: string;
+    changeWorkspace(workspace: Workspace): void;
+    showStatistics(): void;
+    showFilters(): void;
+    onSwitchPlay(): void;
+    onPrevFrame(): void;
+    onNextFrame(): void;
+    onForward(): void;
+    onBackward(): void;
+    onFirstFrame(): void;
+    onLastFrame(): void;
+    onSearchAnnotations(direction: 'forward' | 'backward'): void;
+    onSearchChapters(direction: 'forward' | 'backward'): void;
+    onSelectChapter(id: number): void;
+    setHoveredChapter(id: number | null): void;
+    onSliderChange(value: number): void;
+    onInputChange(value: number): void;
+    onURLIconClick(): void;
+    onCopyFilenameIconClick(): void;
+    onUndoClick(): void;
+    onRedoClick(): void;
+    onFinishDraw(): void;
+    onDeleteFrame(): void;
+    onRestoreFrame(): void;
+    switchNavigationBlocked(blocked: boolean): void;
+    setNavigationType(navigationType: NavigationType): void;
+    switchShowSearchPallet(visible: boolean): void;
+}
 
-import {
-    MainMenuIcon,
-    SaveIcon,
-    UndoIcon,
-    RedoIcon,
-    PlaycontrolFirstIcon,
-    PlaycontrolBackJumpIcon,
-    PlaycontrolPreviousIcon,
-    PlaycontrolPlayIcon,
-    PlaycontrolNextIcon,
-    PlaycontrolForwardJumpIcon,
-    PlaycontrolLastIcon,
-    InfoIcon,
-    FullscreenIcon,
-} from '../../../icons';
+export default function AnnotationTopBarComponent(props: Props): JSX.Element {
+    const {
+        saving,
+        undoAction,
+        redoAction,
+        playing,
+        chapters,
+        hoveredChapter,
+        ranges,
+        frameNumber,
+        frameFilename,
+        frameDeleted,
+        inputFrameRef,
+        startFrame,
+        stopFrame,
+        workspace,
+        undoShortcut,
+        redoShortcut,
+        drawShortcut,
+        playPauseShortcut,
+        deleteFrameShortcut,
+        nextFrameShortcut,
+        previousFrameShortcut,
+        forwardShortcut,
+        backwardShortcut,
+        focusFrameInputShortcut,
+        searchFrameByNameShortcut,
+        activeControl,
+        rectDrawingMethod,
+        annotationFilters,
+        initialOpenGuide,
+        navigationType,
+        jobInstance,
+        keyMap,
+        showStatistics,
+        showFilters,
+        changeWorkspace,
+        onSwitchPlay,
+        onPrevFrame,
+        onNextFrame,
+        onForward,
+        onBackward,
+        onFirstFrame,
+        onLastFrame,
+        onSearchAnnotations,
+        onSearchChapters,
+        onSelectChapter,
+        setHoveredChapter,
+        onSliderChange,
+        onInputChange,
+        onURLIconClick,
+        onCopyFilenameIconClick,
+        onUndoClick,
+        onRedoClick,
+        onFinishDraw,
+        onDeleteFrame,
+        onRestoreFrame,
+        setNavigationType,
+        switchNavigationBlocked,
+        switchShowSearchPallet,
+        showSearchFrameByName,
+    } = props;
 
-export default function AnnotationPageComponent(): JSX.Element {
+    const playerItems: [JSX.Element, number][] = [];
+
+    playerItems.push([(
+        <PlayerButtons
+            key='player_buttons'
+            playing={playing}
+            playPauseShortcut={playPauseShortcut}
+            nextFrameShortcut={nextFrameShortcut}
+            previousFrameShortcut={previousFrameShortcut}
+            forwardShortcut={forwardShortcut}
+            backwardShortcut={backwardShortcut}
+            navigationType={navigationType}
+            chapters={chapters}
+            keyMap={keyMap}
+            workspace={workspace}
+            onPrevFrame={onPrevFrame}
+            onNextFrame={onNextFrame}
+            onForward={onForward}
+            onBackward={onBackward}
+            onFirstFrame={onFirstFrame}
+            onLastFrame={onLastFrame}
+            onSwitchPlay={onSwitchPlay}
+            onSearchAnnotations={onSearchAnnotations}
+            onSearchChapters={onSearchChapters}
+            onHoveredChapter={setHoveredChapter}
+            onSelectChapter={onSelectChapter}
+            setNavigationType={setNavigationType}
+        />
+    ), 0]);
+
+    playerItems.push([(
+        <PlayerNavigation
+            key='player_navigation'
+            startFrame={startFrame}
+            stopFrame={stopFrame}
+            playing={playing}
+            chapters={chapters}
+            hoveredChapter={hoveredChapter}
+            ranges={ranges}
+            frameNumber={frameNumber}
+            frameFilename={frameFilename}
+            frameDeleted={frameDeleted}
+            frameDeletionAvailable={jobInstance.type !== JobType.REPLICA}
+            deleteFrameShortcut={deleteFrameShortcut}
+            focusFrameInputShortcut={focusFrameInputShortcut}
+            searchFrameByNameShortcut={searchFrameByNameShortcut}
+            inputFrameRef={inputFrameRef}
+            keyMap={keyMap}
+            workspace={workspace}
+            onSliderChange={onSliderChange}
+            onInputChange={onInputChange}
+            onURLIconClick={onURLIconClick}
+            onCopyFilenameIconClick={onCopyFilenameIconClick}
+            onDeleteFrame={onDeleteFrame}
+            onRestoreFrame={onRestoreFrame}
+            switchNavigationBlocked={switchNavigationBlocked}
+            switchShowSearchPallet={switchShowSearchPallet}
+            showSearchFrameByName={showSearchFrameByName}
+        />
+    ), 10]);
+
     return (
-        <Layout.Header className='cvat-annotation-page-header'>
-            <Row type='flex' justify='space-between'>
-                <Col className='cvat-annotation-header-left-group'>
-                    <div className='cvat-annotation-header-button'>
-                        <Icon component={MainMenuIcon} />
-                        <span>Menu</span>
-                    </div>
-                    <div className='cvat-annotation-header-button'>
-                        <Icon component={SaveIcon} />
-                        <span>Save</span>
-                    </div>
-                    <div className='cvat-annotation-header-button'>
-                        <Icon component={UndoIcon} />
-                        <span>Undo</span>
-                    </div>
-                    <div className='cvat-annotation-header-button'>
-                        <Icon component={RedoIcon} />
-                        <span>Redo</span>
-                    </div>
-                </Col>
-                <Col className='cvat-annotation-header-player-group'>
-                    <Row type='flex' align='middle'>
-                        <Col className='cvat-annotation-header-player-buttons'>
-                            <Icon component={PlaycontrolFirstIcon} />
-                            <Icon component={PlaycontrolBackJumpIcon} />
-                            <Icon component={PlaycontrolPreviousIcon} />
-                            <Icon component={PlaycontrolPlayIcon} />
-                            <Icon component={PlaycontrolNextIcon} />
-                            <Icon component={PlaycontrolForwardJumpIcon} />
-                            <Icon component={PlaycontrolLastIcon} />
-                        </Col>
-                        <Col className='cvat-annotation-header-player-controls'>
-                            <Row type='flex'>
-                                <Col>
-                                    <Slider className='cvat-annotation-header-player-slider' tipFormatter={null} />
-                                </Col>
-                            </Row>
-                            <Row type='flex' justify='space-around'>
-                                <Col className='cvat-annotation-header-filename-wrapper'>
-                                    <Tooltip overlay='filename.png'>
-                                        <Text type='secondary'>filename.png</Text>
-                                    </Tooltip>
-                                </Col>
-                            </Row>
-                        </Col>
-                        <Col>
-                            <Input className='cvat-annotation-header-frame-selector' type='number' />
-                        </Col>
-                    </Row>
-                </Col>
-                <Col className='cvat-annotation-header-right-group'>
-                    <div className='cvat-annotation-header-button'>
-                        <Icon component={FullscreenIcon} />
-                        <span>Fullscreen</span>
-                    </div>
-                    <div className='cvat-annotation-header-button'>
-                        <Icon component={InfoIcon} />
-                        <span>Info</span>
-                    </div>
-                    <div>
-                        <Select className='cvat-annotation-header-workspace-selector' defaultValue='standard'>
-                            <Select.Option key='standard' value='standard'>Standard</Select.Option>
-                            <Select.Option key='aam' value='aam'>Attribute annotation</Select.Option>
-                        </Select>
-                    </div>
-                </Col>
-            </Row>
-        </Layout.Header>
+        <Row justify='space-between'>
+            <LeftGroup
+                saving={saving}
+                undoAction={undoAction}
+                redoAction={redoAction}
+                undoShortcut={undoShortcut}
+                redoShortcut={redoShortcut}
+                activeControl={activeControl}
+                rectDrawingMethod={rectDrawingMethod}
+                drawShortcut={drawShortcut}
+                onUndoClick={onUndoClick}
+                onRedoClick={onRedoClick}
+                onFinishDraw={onFinishDraw}
+                keyMap={keyMap}
+            />
+            <Col className='cvat-annotation-header-player-group'>
+                <Row align='middle'>
+                    { playerItems.sort((menuItem1, menuItem2) => menuItem1[1] - menuItem2[1])
+                        .map((menuItem) => menuItem[0]) }
+                </Row>
+            </Col>
+            <RightGroup
+                workspace={workspace}
+                jobInstance={jobInstance}
+                annotationFilters={annotationFilters}
+                initialOpenGuide={initialOpenGuide}
+                changeWorkspace={changeWorkspace}
+                showStatistics={showStatistics}
+                showFilters={showFilters}
+            />
+        </Row>
     );
 }

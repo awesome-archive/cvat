@@ -1,16 +1,59 @@
-@import '../../base.scss';
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
+@import 'base';
 
 .cvat-header.ant-layout-header {
     display: flex;
-    padding-left: 0px;
-    padding-right: 0px;
-    line-height: 0px;
-    height: 44px;
+    padding-left: 0;
+    padding-right: 0;
+    line-height: 0;
+    height: $header-height;
     background: $header-color;
+    justify-content: space-between;
+}
+
+.ant-btn.ant-btn-link.cvat-header-button {
+    color: $text-color;
+    margin-right: $grid-unit-size;
+
+    &:hover {
+        color: $text-color;
+    }
+}
+
+.cvat-logo-icon {
+    width: max-content;
+    height: $grid-unit-size * 4;
+    max-width: $grid-unit-size * 16;
+    overflow: hidden;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+
+    img {
+        object-fit: contain;
+        max-width: 100%;
+        max-height: 100%;
+    }
 }
 
 .cvat-left-header {
-    width: 50%;
+    .ant-btn.cvat-header-button {
+        opacity: 0.7;
+
+        &.cvat-active-header-button {
+            font-weight: bold;
+            opacity: 1;
+        }
+    }
+
+    .cvat-logo-icon {
+        margin: 0 $grid-unit-size * 2;
+    }
+
     display: flex;
     justify-content: flex-start;
     align-items: center;
@@ -21,35 +64,60 @@
     display: flex;
     justify-content: flex-end;
     align-items: center;
-}
 
-.anticon.cvat-logo-icon {
-    > svg {
-        transform: scale(0.7);
+    > a.ant-btn {
+        span[role='img'] {
+            font-size: 24px;
+            line-height: 24px;
+        }
     }
 }
 
-.ant-btn.cvat-header-button {
-    color: $text-color;
-    padding: 0px 10px;
-    margin-right: 10px;
-}
-
-
-.ant-dropdown-trigger.cvat-header-menu-dropdown {
+.cvat-header-menu-user-dropdown {
     display: flex;
     align-items: center;
-    border-left: 1px solid $border-color-1;
-    padding: 0px 20px;
-}
+    cursor: pointer;
 
-.anticon.cvat-header-account-icon {
-    > svg {
-        transform: scale(0.4);
+    .anticon.cvat-header-dropdown-icon {
+        &.anticon-caret-down {
+            font-size: 12px;
+        }
+
+        font-size: 20px;
+        padding: $grid-unit-size;
+    }
+
+    .cvat-header-menu-user-dropdown-organization {
+        font-size: 10px;
+    }
+
+    > div:nth-child(2) {
+        max-width: $grid-unit-size * 15;
+        height: $grid-unit-size * 5;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+        align-items: center;
     }
 }
 
-.anticon.cvat-header-menu-icon {
-    margin-left: 16px;
-    margin-right: 0px;
+.cvat-header-menu {
+    width: $grid-unit-size * 24;
+}
+
+.cvat-header-menu-active-organization-item {
+    ::after {
+        content: ' \2713';
+        float: right;
+        margin-left: $grid-unit-size;
+    }
+
+    font-weight: bold;
+}
+
+.cvat-shortcuts-modal-window-table {
+    .ant-table {
+        max-height: $grid-unit-size * 70;
+        overflow-y: auto;
+    }
 }

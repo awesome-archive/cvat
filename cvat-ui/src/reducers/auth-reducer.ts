@@ -1,25 +1,44 @@
-import { AnyAction } from 'redux';
-import { AuthActionTypes } from '../actions/auth-actions';
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
-import { AuthState } from './interfaces';
+import { BoundariesActions, BoundariesActionTypes } from 'actions/boundaries-actions';
+import { AuthActions, AuthActionTypes } from 'actions/auth-actions';
+import { AuthState } from '.';
 
 const defaultState: AuthState = {
     initialized: false,
     fetching: false,
     user: null,
+    showChangePasswordDialog: false,
+    hasEmailVerificationBeenSent: false,
+    apiTokens: {
+        fetching: false,
+        current: [],
+        count: 0,
+    },
 };
 
-export default (state = defaultState, action: AnyAction): AuthState => {
+export default function (state = defaultState, action: AuthActions | BoundariesActions): AuthState {
     switch (action.type) {
-        case AuthActionTypes.AUTHORIZED_SUCCESS:
+        case AuthActionTypes.AUTHENTICATED_REQUEST:
+            return {
+                ...state,
+                fetching: true,
+                initialized: false,
+            };
+        case AuthActionTypes.AUTHENTICATED_SUCCESS:
             return {
                 ...state,
                 initialized: true,
+                fetching: false,
                 user: action.payload.user,
             };
-        case AuthActionTypes.AUTHORIZED_FAILED:
+        case AuthActionTypes.AUTHENTICATED_FAILED:
             return {
                 ...state,
+                fetching: false,
                 initialized: true,
             };
         case AuthActionTypes.LOGIN:
@@ -32,12 +51,16 @@ export default (state = defaultState, action: AnyAction): AuthState => {
                 ...state,
                 fetching: false,
                 user: action.payload.user,
+                hasEmailVerificationBeenSent: false,
             };
-        case AuthActionTypes.LOGIN_FAILED:
+        case AuthActionTypes.LOGIN_FAILED: {
+            const { hasEmailVerificationBeenSent } = action.payload;
             return {
                 ...state,
                 fetching: false,
+                hasEmailVerificationBeenSent,
             };
+        }
         case AuthActionTypes.LOGOUT:
             return {
                 ...state,
@@ -53,20 +76,149 @@ export default (state = defaultState, action: AnyAction): AuthState => {
             return {
                 ...state,
                 fetching: true,
-                user: action.payload.user,
+                user: null,
             };
         case AuthActionTypes.REGISTER_SUCCESS:
             return {
                 ...state,
                 fetching: false,
-                user: action.payload.user,
+                initialized: false,
             };
         case AuthActionTypes.REGISTER_FAILED:
             return {
                 ...state,
                 fetching: false,
             };
+        case AuthActionTypes.CHANGE_PASSWORD:
+            return {
+                ...state,
+                fetching: true,
+            };
+        case AuthActionTypes.CHANGE_PASSWORD_SUCCESS:
+            return {
+                ...state,
+                fetching: false,
+                showChangePasswordDialog: false,
+            };
+        case AuthActionTypes.CHANGE_PASSWORD_FAILED:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.REQUEST_PASSWORD_RESET:
+            return {
+                ...state,
+                fetching: true,
+            };
+        case AuthActionTypes.REQUEST_PASSWORD_RESET_SUCCESS:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.REQUEST_PASSWORD_RESET_FAILED:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.RESET_PASSWORD:
+            return {
+                ...state,
+                fetching: true,
+            };
+        case AuthActionTypes.RESET_PASSWORD_SUCCESS:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.RESET_PASSWORD_FAILED:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.UPDATE_USER:
+            return {
+                ...state,
+                fetching: true,
+            };
+        case AuthActionTypes.UPDATE_USER_SUCCESS:
+            return {
+                ...state,
+                fetching: false,
+                user: action.payload.user,
+            };
+        case AuthActionTypes.UPDATE_USER_FAILED:
+            return {
+                ...state,
+                fetching: false,
+            };
+        case AuthActionTypes.GET_API_TOKENS:
+        case AuthActionTypes.CREATE_API_TOKEN:
+        case AuthActionTypes.UPDATE_API_TOKEN:
+        case AuthActionTypes.REVOKE_API_TOKEN:
+            return {
+                ...state,
+                apiTokens: {
+                    ...state.apiTokens,
+                    fetching: true,
+                },
+            };
+        case AuthActionTypes.GET_API_TOKENS_SUCCESS:
+            return {
+                ...state,
+                apiTokens: {
+                    fetching: false,
+                    current: action.payload.tokens,
+                    count: action.payload.count,
+                },
+            };
+        case AuthActionTypes.CREATE_API_TOKEN_SUCCESS:
+            return {
+                ...state,
+                apiTokens: {
+                    ...state.apiTokens,
+                    fetching: false,
+                    current: [...state.apiTokens.current, action.payload.token],
+                },
+            };
+        case AuthActionTypes.UPDATE_API_TOKEN_SUCCESS: {
+            const updatedToken = action.payload.token;
+            return {
+                ...state,
+                apiTokens: {
+                    ...state.apiTokens,
+                    fetching: false,
+                    current: state.apiTokens.current.map((token) => (
+                        token.id === updatedToken.id ? updatedToken : token
+                    )),
+                },
+            };
+        }
+        case AuthActionTypes.REVOKE_API_TOKEN_SUCCESS: {
+            const { token } = action.payload;
+            return {
+                ...state,
+                apiTokens: {
+                    ...state.apiTokens,
+                    fetching: false,
+                    current: state.apiTokens.current.filter((_token) => _token.id !== token.id),
+                },
+            };
+        }
+        case AuthActionTypes.GET_API_TOKENS_FAILED:
+        case AuthActionTypes.CREATE_API_TOKEN_FAILED:
+        case AuthActionTypes.UPDATE_API_TOKEN_FAILED:
+        case AuthActionTypes.REVOKE_API_TOKEN_FAILED:
+            return {
+                ...state,
+                apiTokens: {
+                    ...state.apiTokens,
+                    fetching: false,
+                },
+            };
+        case BoundariesActionTypes.RESET_AFTER_ERROR: {
+            return { ...defaultState };
+        }
         default:
             return state;
     }
-};
+}

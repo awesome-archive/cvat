@@ -1,385 +1,238 @@
+// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
+import { connect } from 'react-redux';
+import dayjs from 'dayjs';
 
-import {
-    Row,
-    Col,
-    Tag,
-    Icon,
-    Modal,
-    Button,
-    notification,
-} from 'antd';
-
+import { Row, Col } from 'antd/lib/grid';
 import Text from 'antd/lib/typography/Text';
 import Title from 'antd/lib/typography/Title';
 
-import moment from 'moment';
-
+import {
+    User, getCore, Project, Task, FramesMetaData, CloudStorage,
+} from 'cvat-core-wrapper';
+import AutomaticAnnotationProgress from 'components/tasks-page/automatic-annotation-progress';
+import MdGuideControl from 'components/md-guide/md-guide-control';
+import Preview from 'components/common/preview';
+import { cancelInferenceAsync } from 'actions/models-actions';
+import { CombinedState, ActiveInference } from 'reducers';
+import { usePlugins } from 'utils/hooks';
 import UserSelector from './user-selector';
+import BugTrackerEditor from './bug-tracker-editor';
+import CloudStorageEditor from './cloud-storage-editor';
 import LabelsEditorComponent from '../labels-editor/labels-editor';
-import getCore from '../../core';
-import patterns from '../../utils/validation-patterns';
-import { getReposData, syncRepos } from '../../utils/git-utils';
+import ProjectSubsetField from '../create-task-page/project-subset-field';
+
+interface OwnProps {
+    task: Task;
+    onUpdateTask: (task: Task, fields?: Parameters<Task['save']>[0]) => Promise<Task>;
+    taskMeta: FramesMetaData;
+    cloudStorageInstance: CloudStorage | null;
+    onUpdateTaskMeta: (meta: FramesMetaData) => Promise<void>;
+    labelsEditorProps?: Record<string, unknown>;
+}
+
+interface StateToProps {
+    activeInference: ActiveInference | null;
+    project?: Project;
+}
+
+interface DispatchToProps {
+    cancelAutoAnnotation(): void;
+}
+
+function mapStateToProps(state: CombinedState, own: OwnProps): StateToProps & OwnProps {
+    return {
+        ...own,
+        activeInference: state.models.inferences[own.task.id] ?? null,
+        project: state.projects.current.find((project) => project.id === own.task.projectId),
+    };
+}
+
+function mapDispatchToProps(dispatch: any, own: OwnProps): DispatchToProps {
+    return {
+        cancelAutoAnnotation(): void {
+            dispatch(cancelInferenceAsync(own.task.id));
+        },
+    };
+}
 
 const core = getCore();
 
-interface Props {
-    previewImage: string;
-    taskInstance: any;
-    installedGit: boolean; // change to git repos url
-    registeredUsers: any[];
-    onTaskUpdate: (taskInstance: any) => void;
-}
-
 interface State {
     name: string;
-    bugTracker: string;
-    repository: string;
-    repositoryStatus: string;
+    subset: string;
 }
 
-export default class DetailsComponent extends React.PureComponent<Props, State> {
-    private mounted: boolean;
+type Props = DispatchToProps & StateToProps & OwnProps;
 
+function DetailsTopBarExtras({ targetProps, targetState }: {
+    targetProps: Props;
+    targetState: State;
+}): JSX.Element {
+    // the component is used as a plugin entrypoint
+    // only implemented as a separated functional component in order to use usePlugins inside
+    const extras = usePlugins(
+        (state: CombinedState) => state.plugins.components.taskPage.details.topBar.extras,
+        targetProps,
+        targetState,
+    );
+
+    return (
+        <>
+            {extras.sort((left, right) => left.weight - right.weight).map(({
+                component: Component,
+            }, index) => (
+                <Component key={index} targetProps={targetProps} targetState={targetState} />
+            ))}
+        </>
+    );
+}
+
+class DetailsComponent extends React.PureComponent<Props, State> {
     constructor(props: Props) {
         super(props);
-
-        const { taskInstance } = props;
-
-        this.mounted = false;
+        const { task: taskInstance } = props;
         this.state = {
             name: taskInstance.name,
-            bugTracker: taskInstance.bugTracker,
-            repository: '',
-            repositoryStatus: '',
+            subset: taskInstance.subset,
         };
     }
 
-    public componentDidMount(): void {
-        const { taskInstance } = this.props;
-        this.mounted = true;
-
-        getReposData(taskInstance.id)
-            .then((data): void => {
-                if (data !== null && this.mounted) {
-                    if (data.status.error) {
-                        notification.error({
-                            message: 'Could not receive repository status',
-                            description: data.status.error,
-                        });
-                    } else {
-                        this.setState({
-                            repositoryStatus: data.status.value,
-                        });
-                    }
-
-                    this.setState({
-                        repository: data.url,
-                    });
-                }
-            }).catch((error): void => {
-                if (this.mounted) {
-                    notification.error({
-                        message: 'Could not receive repository status',
-                        description: error.toString(),
-                    });
-                }
-            });
-    }
-
-
     public componentDidUpdate(prevProps: Props): void {
-        const { taskInstance } = this.props;
+        const { task: taskInstance } = this.props;
 
         if (prevProps !== this.props) {
             this.setState({
                 name: taskInstance.name,
-                bugTracker: taskInstance.bugTracker,
             });
         }
     }
 
-    public componentWillUnmount(): void {
-        this.mounted = false;
-    }
-
     private renderTaskName(): JSX.Element {
         const { name } = this.state;
+        const { task: taskInstance, onUpdateTask } = this.props;
+        const taskName = name;
+
+        return (
+            <Row>
+                <Col>
+                    <Title
+                        level={4}
+                        editable={{
+                            onChange: (value: string): void => {
+                                this.setState({
+                                    name: value,
+                                });
+
+                                taskInstance.name = value;
+                                onUpdateTask(taskInstance);
+                            },
+                        }}
+                        className='cvat-text-color cvat-task-name'
+                    >
+                        {taskName}
+                    </Title>
+                </Col>
+            </Row>
+        );
+    }
+
+    private renderDescription(): JSX.Element {
         const {
-            taskInstance,
-            onTaskUpdate,
+            task: taskInstance,
+            onUpdateTask,
+            taskMeta,
+            cloudStorageInstance,
+            onUpdateTaskMeta,
         } = this.props;
 
-        return (
-            <Title
-                level={4}
-                editable={{
-                    onChange: (value: string): void => {
-                        this.setState({
-                            name: value,
-                        });
-
-                        taskInstance.name = value;
-                        onTaskUpdate(taskInstance);
-                    },
+        const owner = taskInstance.owner ? taskInstance.owner.username : null;
+        const assignee = taskInstance.assignee ? taskInstance.assignee : null;
+        const created = dayjs(taskInstance.createdDate).format('MMMM Do YYYY');
+        const assigneeSelect = (
+            <UserSelector
+                value={assignee}
+                onSelect={(value: User | null): void => {
+                    if (taskInstance?.assignee?.id === value?.id) return;
+                    taskInstance.assignee = value;
+                    onUpdateTask(taskInstance);
                 }}
-                className='cvat-text-color'
-            >
-                {name}
-            </Title>
+            />
         );
-    }
-
-    private renderPreview(): JSX.Element {
-        const { previewImage } = this.props;
-        return (
-            <div className='cvat-task-preview-wrapper'>
-                <img alt='Preview' className='cvat-task-preview' src={previewImage} />
-            </div>
-        );
-    }
-
-    private renderParameters(): JSX.Element {
-        const { taskInstance } = this.props;
-        const { overlap } = taskInstance;
-        const { segmentSize } = taskInstance;
-        const { imageQuality } = taskInstance;
-        const zOrder = taskInstance.zOrder.toString();
 
         return (
             <>
-                <Row type='flex' justify='start' align='middle'>
+                <Row className='cvat-task-details-user-block' justify='space-between' align='middle'>
                     <Col span={12}>
-                        <Text strong className='cvat-text-color'>Overlap size</Text>
-                        <br />
-                        <Text className='cvat-text-color'>{overlap}</Text>
+                        {owner && (
+                            <div>
+                                <Text type='secondary'>
+                                    {`Task #${taskInstance.id} Created by ${owner} on ${created}`}
+                                </Text>
+                            </div>
+                        )}
                     </Col>
-                    <Col span={12}>
-                        <Text strong className='cvat-text-color'>Segment size</Text>
-                        <br />
-                        <Text className='cvat-text-color'>{segmentSize}</Text>
+                    <Col>
+                        <Text type='secondary'>Assigned to</Text>
+                        {assigneeSelect}
                     </Col>
                 </Row>
-                <Row type='flex' justify='space-between' align='middle'>
-                    <Col span={12}>
-                        <Text strong className='cvat-text-color'>Image quality</Text>
-                        <br />
-                        <Text className='cvat-text-color'>{imageQuality}</Text>
-                    </Col>
-                    <Col span={12}>
-                        <Text strong className='cvat-text-color'>Z-order</Text>
-                        <br />
-                        <Text className='cvat-text-color'>{zOrder}</Text>
-                    </Col>
+                <Row justify='end' className='cvat-task-details-cloud-storage'>
+                    <CloudStorageEditor
+                        taskMeta={taskMeta}
+                        cloudStorageInstance={cloudStorageInstance}
+                        onUpdateTaskMeta={onUpdateTaskMeta}
+                    />
                 </Row>
             </>
         );
     }
 
-    private renderUsers(): JSX.Element {
-        const {
-            taskInstance,
-            registeredUsers,
-            onTaskUpdate,
-        } = this.props;
-        const owner = taskInstance.owner ? taskInstance.owner.username : null;
-        const assignee = taskInstance.assignee ? taskInstance.assignee.username : null;
-        const created = moment(taskInstance.createdDate).format('MMMM Do YYYY');
-        const assigneeSelect = (
-            <UserSelector
-                users={registeredUsers}
-                value={assignee}
-                onChange={
-                    (value: string): void => {
-                        let [userInstance] = registeredUsers
-                            .filter((user: any) => user.username === value);
-
-                        if (userInstance === undefined) {
-                            userInstance = null;
-                        }
-
-                        taskInstance.assignee = userInstance;
-                        onTaskUpdate(taskInstance);
-                    }
-                }
-            />
-        );
-
-        return (
-            <Row type='flex' justify='space-between' align='middle'>
-                <Col span={12}>
-                    { owner && (
-                        <Text type='secondary'>
-                            {`Created by ${owner} on ${created}`}
-                        </Text>
-                    )}
-                </Col>
-                <Col span={10}>
-                    <Text type='secondary'>
-                        Assigned to
-                        { assigneeSelect }
-                    </Text>
-                </Col>
-            </Row>
-        );
-    }
-
-    private renderDatasetRepository(): JSX.Element | boolean {
-        const { taskInstance } = this.props;
-        const {
-            repository,
-            repositoryStatus,
-        } = this.state;
-
-        return (
-            !!repository
-                && (
-                    <Row>
-                        <Col className='cvat-dataset-repository-url'>
-                            <Text strong className='cvat-text-color'>Dataset Repository</Text>
-                            <br />
-                            <a href={repository} rel='noopener noreferrer' target='_blank'>{repository}</a>
-                            {repositoryStatus === 'sync'
-                                && (
-                                    <Tag color='blue'>
-                                        <Icon type='check-circle' />
-                                        Synchronized
-                                    </Tag>
-                                )
-                            }
-                            {repositoryStatus === 'merged'
-                                && (
-                                    <Tag color='green'>
-                                        <Icon type='check-circle' />
-                                        Merged
-                                    </Tag>
-                                )
-                            }
-                            {repositoryStatus === 'syncing'
-                                && (
-                                    <Tag color='purple'>
-                                        <Icon type='loading' />
-                                        Syncing
-                                    </Tag>
-                                )
-                            }
-                            {repositoryStatus === '!sync'
-                                && (
-                                    <Tag
-                                        color='red'
-                                        onClick={(): void => {
-                                            this.setState({
-                                                repositoryStatus: 'syncing',
-                                            });
-
-                                            syncRepos(taskInstance.id).then((): void => {
-                                                if (this.mounted) {
-                                                    this.setState({
-                                                        repositoryStatus: 'sync',
-                                                    });
-                                                }
-                                            }).catch((): void => {
-                                                if (this.mounted) {
-                                                    this.setState({
-                                                        repositoryStatus: '!sync',
-                                                    });
-                                                }
-                                            });
-                                        }}
-                                    >
-                                        <Icon type='warning' />
-                                        Synchronize
-                                    </Tag>
-                                )
-                            }
-                        </Col>
-                    </Row>
-                )
-        );
-    }
-
-    private renderBugTracker(): JSX.Element {
-        const {
-            taskInstance,
-            onTaskUpdate,
-        } = this.props;
-        const { bugTracker } = this.state;
-
-        let shown = false;
-        const onChangeValue = (value: string): void => {
-            if (value && !patterns.validateURL.pattern.test(value)) {
-                if (!shown) {
-                    Modal.error({
-                        title: `Could not update the task ${taskInstance.id}`,
-                        content: 'Issue tracker is expected to be URL',
-                        onOk: (() => {
-                            shown = false;
-                        }),
-                    });
-                    shown = true;
-                }
-            } else {
-                this.setState({
-                    bugTracker: value,
-                });
-
-                taskInstance.bugTracker = value;
-                onTaskUpdate(taskInstance);
-            }
-        };
-
-        if (bugTracker) {
-            return (
-                <Row>
-                    <Col>
-                        <Text strong className='cvat-text-color'>Issue Tracker</Text>
-                        <br />
-                        <Text editable={{ onChange: onChangeValue }}>{bugTracker}</Text>
-                        <Button
-                            type='ghost'
-                            size='small'
-                            onClick={(): void => {
-                                // false positive
-                                // eslint-disable-next-line
-                                window.open(bugTracker, '_blank');
-                            }}
-                            className='cvat-open-bug-tracker-button'
-                        >
-                                Open the issue
-                        </Button>
-                    </Col>
-                </Row>
-            );
-        }
-
-        return (
-            <Row>
-                <Col>
-                    <Text strong className='cvat-text-color'>Issue Tracker</Text>
-                    <br />
-                    <Text editable={{ onChange: onChangeValue }}>Not specified</Text>
-                </Col>
-            </Row>
-        );
-    }
-
     private renderLabelsEditor(): JSX.Element {
-        const {
-            taskInstance,
-            onTaskUpdate,
-        } = this.props;
+        const { task: taskInstance, onUpdateTask, labelsEditorProps } = this.props;
 
         return (
             <Row>
-                <Col>
+                <Col span={24}>
                     <LabelsEditorComponent
-                        labels={taskInstance.labels.map(
-                            (label: any): string => label.toJSON(),
+                        {...labelsEditorProps}
+                        labels={taskInstance.labels.map((label) => label.toJSON())}
+                        onSubmit={(labels: any[]): Promise<Task> => (
+                            onUpdateTask(taskInstance, {
+                                labels: labels.map((labelData): any => new core.classes.Label(labelData)),
+                            })
                         )}
-                        onSubmit={(labels: any[]): void => {
-                            taskInstance.labels = labels
-                                .map((labelData): any => new core.classes.Label(labelData));
-                            onTaskUpdate(taskInstance);
+                    />
+                </Col>
+            </Row>
+        );
+    }
+
+    private renderSubsetField(): JSX.Element {
+        const { subset } = this.state;
+        const { task: taskInstance, project, onUpdateTask } = this.props;
+
+        return (
+            <Row>
+                <Col span={24}>
+                    <Text className='cvat-text-color'>Subset:</Text>
+                </Col>
+                <Col span={24}>
+                    <ProjectSubsetField
+                        value={subset}
+                        projectId={taskInstance.projectId as number}
+                        projectSubsets={project?.subsets ?? null}
+                        onChange={(value) => {
+                            this.setState({ subset: value });
+
+                            if (taskInstance.subset !== value) {
+                                taskInstance.subset = value;
+                                onUpdateTask(taskInstance);
+                            }
                         }}
                     />
                 </Col>
@@ -388,34 +241,61 @@ export default class DetailsComponent extends React.PureComponent<Props, State> 
     }
 
     public render(): JSX.Element {
+        const {
+            activeInference,
+            task: taskInstance,
+            cancelAutoAnnotation,
+            onUpdateTask,
+        } = this.props;
+
         return (
             <div className='cvat-task-details'>
-                <Row type='flex' justify='start' align='middle'>
+                <Row justify='space-between' align='middle'>
+                    <Col className='cvat-task-details-task-name'>{this.renderTaskName()}</Col>
                     <Col>
-                        { this.renderTaskName() }
+                        <DetailsTopBarExtras targetProps={this.props} targetState={this.state} />
                     </Col>
                 </Row>
-                <Row type='flex' justify='space-between' align='top'>
+                <Row justify='space-between' align='top'>
                     <Col md={8} lg={7} xl={7} xxl={6}>
-                        <Row type='flex' justify='start' align='middle'>
+                        <Row justify='start' align='middle'>
                             <Col span={24}>
-                                { this.renderPreview() }
-                            </Col>
-                        </Row>
-                        <Row>
-                            <Col>
-                                { this.renderParameters() }
+                                <Preview
+                                    task={taskInstance}
+                                    loadingClassName='cvat-task-item-loading-preview'
+                                    emptyPreviewClassName='cvat-task-item-empty-preview'
+                                    previewClassName='cvat-task-item-preview'
+                                />
                             </Col>
                         </Row>
                     </Col>
                     <Col md={16} lg={17} xl={17} xxl={18}>
-                        { this.renderUsers() }
-                        { this.renderBugTracker() }
-                        { this.renderDatasetRepository() }
-                        { this.renderLabelsEditor() }
+                        {this.renderDescription()}
+                        { taskInstance.projectId === null && <MdGuideControl instanceType='task' id={taskInstance.id} /> }
+                        <Row justify='space-between' align='middle'>
+                            <Col span={12}>
+                                <BugTrackerEditor
+                                    instance={taskInstance}
+                                    onChange={(bugTracker) => {
+                                        taskInstance.bugTracker = bugTracker;
+                                        onUpdateTask(taskInstance);
+                                    }}
+                                />
+                            </Col>
+                            <Col span={10}>
+                                <AutomaticAnnotationProgress
+                                    activeInference={activeInference}
+                                    cancelAutoAnnotation={cancelAutoAnnotation}
+                                />
+                            </Col>
+                        </Row>
+                        {!taskInstance.projectId && this.renderLabelsEditor()}
+                        {taskInstance.projectId && this.renderSubsetField()}
                     </Col>
                 </Row>
             </div>
         );
     }
 }
+
+export default connect(mapStateToProps, mapDispatchToProps)(DetailsComponent);

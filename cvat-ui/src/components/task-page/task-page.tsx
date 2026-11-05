@@ -1,86 +1,164 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import './styles.scss';
-import React from 'react';
-import { RouteComponentProps } from 'react-router';
-import { withRouter } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useHistory, useParams } from 'react-router';
+import { useDispatch, useSelector } from 'react-redux';
+import { shallowEqual } from 'utils/redux';
+import { Row, Col } from 'antd/lib/grid';
+import Spin from 'antd/lib/spin';
+import notification from 'antd/lib/notification';
 
+import { getInferenceStatusAsync } from 'actions/models-actions';
+import { updateJobAsync, jobsActions } from 'actions/jobs-actions';
 import {
-    Col,
-    Row,
-    Spin,
-    Result,
-} from 'antd';
-
+    getCore, Task, Job, FramesMetaData, MediaType,
+} from 'cvat-core-wrapper';
+import { TaskNotFoundComponent } from 'components/common/not-found';
+import JobListComponent from 'components/task-page/job-list';
+import ModelRunnerModal from 'components/model-runner-modal/model-runner-dialog';
+import CVATLoadingSpinner from 'components/common/loading-spinner';
+import MoveTaskModal from 'components/move-task-modal/move-task-modal';
+import AddReplicasModal from 'components/jobs-page/add-replicas-modal';
+import { CombinedState } from 'reducers';
+import { updateTaskAsync, updateTaskMetadataAsync } from 'actions/tasks-actions';
 import TopBarComponent from './top-bar';
-import DetailsContainer from '../../containers/task-page/details';
-import JobListContainer from '../../containers/task-page/job-list';
-import ModelRunnerModalContainer from '../../containers/model-runner-dialog/model-runner-dialog';
-import { Task } from '../../reducers/interfaces';
+import DetailsComponent from './details';
+import { getCloudStorageById } from './cloud-storage-editor';
 
-interface TaskPageComponentProps {
-    task: Task | null | undefined;
-    fetching: boolean;
-    deleteActivity: boolean | null;
-    installedGit: boolean;
-    getTask: () => void;
-}
+const core = getCore();
 
-type Props = TaskPageComponentProps & RouteComponentProps<{id: string}>;
+function TaskPageComponent(): JSX.Element {
+    const history = useHistory();
+    const id = +useParams<{ id: string }>().id;
+    const dispatch = useDispatch();
+    const [taskInstance, setTaskInstance] = useState<Task | null>(null);
+    const [taskMeta, setTaskMeta] = useState<FramesMetaData | null>(null);
+    const [
+        cloudStorageInstance, setCloudStorageInstance,
+    ] = useState<CombinedState['cloudStorages']['current'][number] | null>(null);
+    const [fetchingTask, setFetchingTask] = useState(true);
 
-class TaskPageComponent extends React.PureComponent<Props> {
-    private attempts = 0;
+    const {
+        deletes,
+        updates,
+        jobsFetching,
+        bulkFetching,
+    } = useSelector((state: CombinedState) => ({
+        deletes: state.tasks.activities.deletes,
+        updates: state.tasks.activities.updates,
+        jobsFetching: state.jobs.fetching,
+        bulkFetching: state.bulkActions.fetching,
+    }), shallowEqual);
+    const isTaskUpdating = (updates[id] || jobsFetching) && !bulkFetching;
 
-    public componentDidUpdate(): void {
-        const {
-            deleteActivity,
-            history,
-        } = this.props;
+    const receiveTask = async (): Promise<void> => {
+        try {
+            const [task]: Task[] = await core.tasks.get({ id });
 
-        if (deleteActivity) {
-            history.replace('/tasks');
-        }
-    }
+            if (task) {
+                setTaskInstance(task);
+                dispatch(jobsActions.getJobsSuccess(
+                    Object.assign([...task.jobs], { count: task.jobs.length })),
+                );
 
-    public render(): JSX.Element {
-        const {
-            task,
-            fetching,
-            getTask,
-        } = this.props;
+                const meta = await task.meta.get();
+                setTaskMeta(meta);
 
-        if (task === null) {
-            if (!fetching) {
-                getTask();
+                if (meta.cloudStorageId) {
+                    const cloudStorage = await getCloudStorageById(meta.cloudStorageId);
+                    setCloudStorageInstance(cloudStorage);
+                }
             }
-
-            return (
-                <Spin size='large' className='cvat-spinner' />
-            );
+        } catch (error: any) {
+            notification.error({
+                message: 'Could not receive the requested task from the server',
+                description: error.toString(),
+            });
         }
+    };
 
-        if (typeof (task) === 'undefined') {
-            return (
-                <Result
-                    className='cvat-not-found'
-                    status='404'
-                    title='Sorry, but this task was not found'
-                    subTitle='Please, be sure information you tried to get exist and you have access'
-                />
-            );
+    useEffect(() => {
+        receiveTask().finally(() => {
+            setFetchingTask(false);
+        });
+        dispatch(getInferenceStatusAsync());
+    }, []);
+
+    useEffect(() => {
+        if (taskInstance && id in deletes && deletes[id]) {
+            history.push('/tasks');
         }
+    }, [deletes]);
 
-        return (
-            <>
-                <Row type='flex' justify='center' align='top' className='cvat-task-details-wrapper'>
-                    <Col md={22} lg={18} xl={16} xxl={14}>
-                        <TopBarComponent taskInstance={(task as Task).instance} />
-                        <DetailsContainer task={(task as Task)} />
-                        <JobListContainer task={(task as Task)} />
-                    </Col>
-                </Row>
-                <ModelRunnerModalContainer />
-            </>
-        );
+    const isAudioTask = taskInstance && taskInstance.mediaType === MediaType.AUDIO;
+    const labelsEditorProps = useMemo(() => (isAudioTask ? {
+        enableSkeletonCreator: false,
+        enableFromModelCreator: false,
+        showLabelType: false,
+    } : undefined), [isAudioTask]);
+
+    if (fetchingTask) {
+        return <Spin size='large' className='cvat-spinner' />;
     }
+
+    if (!taskInstance) {
+        return <TaskNotFoundComponent />;
+    }
+
+    const onUpdateTask = (task: Task, fields: Parameters<Task['save']>[0] = {}): Promise<Task> => {
+        const promise = dispatch(updateTaskAsync(task, fields));
+        promise.then((updatedTask: Task) => {
+            setTaskInstance(updatedTask);
+        });
+        return promise;
+    };
+
+    const onUpdateTaskMeta = (meta: FramesMetaData): Promise<void> => (
+        dispatch(updateTaskMetadataAsync(taskInstance, meta)).then((updatedMeta: FramesMetaData) => {
+            setTaskMeta(updatedMeta);
+            if (updatedMeta && updatedMeta.cloudStorageId) {
+                return getCloudStorageById(updatedMeta.cloudStorageId);
+            }
+            return null;
+        }).then((_cloudStorage) => {
+            setCloudStorageInstance(_cloudStorage);
+        })
+    );
+
+    const onJobUpdate = (job: Job, data: Parameters<Job['save']>[0]): void => {
+        dispatch(updateJobAsync(job, data));
+    };
+
+    return (
+        <div className='cvat-task-page'>
+            { isTaskUpdating ? <CVATLoadingSpinner size='large' /> : null }
+            <Row
+                justify='center'
+                align='top'
+                className='cvat-task-details-wrapper'
+            >
+                <Col span={22} xl={18} xxl={14}>
+                    <TopBarComponent taskInstance={taskInstance} onUpdateTask={onUpdateTask} />
+                    <DetailsComponent
+                        task={taskInstance}
+                        onUpdateTask={onUpdateTask}
+                        taskMeta={taskMeta}
+                        cloudStorageInstance={cloudStorageInstance}
+                        onUpdateTaskMeta={onUpdateTaskMeta}
+                        labelsEditorProps={labelsEditorProps}
+                    />
+                    <JobListComponent task={taskInstance} onJobUpdate={onJobUpdate} />
+                </Col>
+            </Row>
+            <ModelRunnerModal />
+            <MoveTaskModal onUpdateTask={onUpdateTask} />
+            <AddReplicasModal fetchJobs={receiveTask} />
+        </div>
+    );
 }
 
-export default withRouter(TaskPageComponent);
+export default React.memo(TaskPageComponent);

@@ -1,7 +1,7 @@
-/*
-* Copyright (C) 2019 Intel Corporation
-* SPDX-License-Identifier: MIT
-*/
+// Copyright (C) 2019-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
 import {
     CanvasModel,
@@ -13,31 +13,49 @@ import {
     MergeData,
     SplitData,
     GroupData,
+    SelectData,
+    JoinData,
+    SliceData,
     Mode,
+    InteractionData,
+    Configuration,
+    MasksEditData,
+    HighlightedElements,
+    PolyEditData,
+    RenderData,
 } from './canvasModel';
 
 export interface CanvasController {
     readonly objects: any[];
+    readonly renderData: RenderData;
+    readonly issueRegions: Record<number, { hidden: boolean; points: number[] }>;
     readonly focusData: FocusData;
     readonly activeElement: ActiveElement;
+    readonly highlightedElements: HighlightedElements;
     readonly drawData: DrawData;
+    readonly editData: MasksEditData | PolyEditData;
+    readonly interactionData: InteractionData;
     readonly mergeData: MergeData;
     readonly splitData: SplitData;
     readonly groupData: GroupData;
+    readonly selectData: SelectData;
+    readonly selectedObjects: number[];
+    readonly joinData: JoinData;
+    readonly sliceData: SliceData;
     readonly selected: any;
+    readonly configuration: Configuration;
     mode: Mode;
     geometry: Geometry;
 
-    zoom(x: number, y: number, direction: number): void;
+    zoom(x: number, y: number, deltaY: number): void;
     draw(drawData: DrawData): void;
-    merge(mergeData: MergeData): void;
-    split(splitData: SplitData): void;
-    group(groupData: GroupData): void;
+    edit(editData: MasksEditData | PolyEditData): void;
+    selectObjects(selectData: SelectData): void;
     enableDrag(x: number, y: number): void;
     drag(x: number, y: number): void;
     disableDrag(): void;
-
     fit(): void;
+    focus(clientId: number, padding: number): void;
 }
 
 export class CanvasControllerImpl implements CanvasController {
@@ -49,8 +67,8 @@ export class CanvasControllerImpl implements CanvasController {
         this.model = model;
     }
 
-    public zoom(x: number, y: number, direction: number): void {
-        this.model.zoom(x, y, direction);
+    public zoom(x: number, y: number, deltaY: number): void {
+        this.model.zoom(x, y, deltaY);
     }
 
     public fit(): void {
@@ -85,16 +103,16 @@ export class CanvasControllerImpl implements CanvasController {
         this.model.draw(drawData);
     }
 
-    public merge(mergeData: MergeData): void {
-        this.model.merge(mergeData);
+    public edit(editData: MasksEditData | PolyEditData): void {
+        this.model.edit(editData);
     }
 
-    public split(splitData: SplitData): void {
-        this.model.split(splitData);
+    public selectObjects(selectData: SelectData): void {
+        this.model.selectObjects(selectData);
     }
 
-    public group(groupData: GroupData): void {
-        this.model.group(groupData);
+    public focus(clientID: number, padding: number): void {
+        this.model.focus(clientID, padding);
     }
 
     public get geometry(): Geometry {
@@ -105,8 +123,16 @@ export class CanvasControllerImpl implements CanvasController {
         this.model.geometry = geometry;
     }
 
+    public get issueRegions(): Record<number, { hidden: boolean; points: number[] }> {
+        return this.model.issueRegions;
+    }
+
     public get objects(): any[] {
         return this.model.objects;
+    }
+
+    public get renderData(): RenderData {
+        return this.model.renderData;
     }
 
     public get focusData(): FocusData {
@@ -117,8 +143,20 @@ export class CanvasControllerImpl implements CanvasController {
         return this.model.activeElement;
     }
 
+    public get highlightedElements(): HighlightedElements {
+        return this.model.highlightedElements;
+    }
+
     public get drawData(): DrawData {
         return this.model.drawData;
+    }
+
+    public get editData(): MasksEditData | PolyEditData {
+        return this.model.editData;
+    }
+
+    public get interactionData(): InteractionData {
+        return this.model.interactionData;
     }
 
     public get mergeData(): MergeData {
@@ -133,8 +171,28 @@ export class CanvasControllerImpl implements CanvasController {
         return this.model.groupData;
     }
 
+    public get selectData(): SelectData {
+        return this.model.selectData;
+    }
+
+    public get selectedObjects(): number[] {
+        return this.model.selectedObjects;
+    }
+
+    public get joinData(): JoinData {
+        return this.model.joinData;
+    }
+
+    public get sliceData(): SliceData {
+        return this.model.sliceData;
+    }
+
     public get selected(): any {
         return this.model.selected;
+    }
+
+    public get configuration(): Configuration {
+        return this.model.configuration;
     }
 
     public set mode(value: Mode) {

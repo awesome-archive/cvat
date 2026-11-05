@@ -1,56 +1,57 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Icon,
-    Tooltip,
-} from 'antd';
-
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import Text from 'antd/lib/typography/Text';
 
-import { Label } from './common';
+import CVATTooltip from 'components/common/cvat-tooltip';
+import { computeTextColor } from 'utils/compute-text-color';
+import config from 'config';
+import { LabelOptColor } from './common';
 
 interface ConstructorViewerItemProps {
-    label: Label;
-    color: string;
-    onUpdate: (label: Label) => void;
-    onDelete: (label: Label) => void;
+    label: LabelOptColor;
+    color?: string;
+    onUpdate: (label: LabelOptColor) => void;
+    onDelete: (label: LabelOptColor) => void;
 }
 
 export default function ConstructorViewerItem(props: ConstructorViewerItemProps): JSX.Element {
     const {
-        color,
-        label,
-        onUpdate,
-        onDelete,
+        color, label, onUpdate, onDelete,
     } = props;
 
+    const backgroundColor = color || config.NEW_LABEL_COLOR;
+    const textColor = computeTextColor(backgroundColor);
+
     return (
-        <div style={{ background: color }} className='cvat-constructor-viewer-item'>
-            <Text>{label.name}</Text>
-            <Tooltip title='Update attributes'>
+        <div style={{ background: backgroundColor }} className='cvat-constructor-viewer-item'>
+            <Text style={{ color: textColor }}>{label.name}</Text>
+            <CVATTooltip title='Update attributes'>
                 <span
+                    style={{ color: textColor }}
                     role='button'
                     tabIndex={0}
                     onClick={(): void => onUpdate(label)}
                     onKeyPress={(): boolean => false}
                 >
-                    <Icon theme='filled' type='edit' />
+                    <EditOutlined />
                 </span>
-            </Tooltip>
-            { label.id < 0
-                && (
-                    <Tooltip title='Delete label'>
-                        <span
-                            role='button'
-                            tabIndex={0}
-                            onClick={(): void => onDelete(label)}
-                            onKeyPress={(): boolean => false}
-                        >
-                            <Icon type='close' />
-                        </span>
-                    </Tooltip>
-                )
-            }
+            </CVATTooltip>
+            <CVATTooltip title='Delete label'>
+                <span
+                    style={{ color: textColor }}
+                    role='button'
+                    tabIndex={0}
+                    onClick={(): void => onDelete(label)}
+                    onKeyPress={(): boolean => false}
+                >
+                    <DeleteOutlined />
+                </span>
+            </CVATTooltip>
         </div>
     );
 }

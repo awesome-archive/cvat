@@ -1,67 +1,50 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
 import { RouteComponentProps } from 'react-router';
-import { Link, withRouter } from 'react-router-dom';
+import { withRouter } from 'react-router-dom';
+import { Row, Col } from 'antd/lib/grid';
 
-import Title from 'antd/lib/typography/Title';
-import Text from 'antd/lib/typography/Text';
-import {
-    Col,
-    Row,
-} from 'antd';
-
+import { UserAgreement } from 'reducers';
+import SigningLayout, { formSizes } from 'components/signing-common/signing-layout';
 import RegisterForm, { RegisterData } from './register-form';
 
 interface RegisterPageComponentProps {
     fetching: boolean;
-    onRegister: (username: string, firstName: string,
-        lastName: string, email: string,
-        password1: string, password2: string) => void;
+    userAgreements: UserAgreement[];
+    onRegister: (
+        registerData: RegisterData,
+    ) => void;
+    predefinedEmail?: string;
+    hideLoginLink?: boolean;
 }
 
-function RegisterPageComponent(
-    props: RegisterPageComponentProps & RouteComponentProps,
-): JSX.Element {
-    const sizes = {
-        xs: { span: 14 },
-        sm: { span: 14 },
-        md: { span: 10 },
-        lg: { span: 4 },
-        xl: { span: 4 },
-    };
-
+function RegisterPageComponent(props: RegisterPageComponentProps & RouteComponentProps): JSX.Element {
     const {
-        fetching,
-        onRegister,
+        fetching, userAgreements, onRegister, predefinedEmail, hideLoginLink,
     } = props;
 
     return (
-        <Row type='flex' justify='center' align='middle'>
-            <Col {...sizes}>
-                <Title level={2}> Create an account </Title>
-                <RegisterForm
-                    fetching={fetching}
-                    onSubmit={(registerData: RegisterData): void => {
-                        onRegister(
-                            registerData.username,
-                            registerData.firstName,
-                            registerData.lastName,
-                            registerData.email,
-                            registerData.password1,
-                            registerData.password2,
-                        );
-                    }}
-                />
-                <Row type='flex' justify='start' align='top'>
-                    <Col>
-                        <Text strong>
-                            Already have an account?
-                            <Link to='/auth/login'> Login </Link>
-                        </Text>
+        <SigningLayout>
+            <Col {...formSizes.wrapper}>
+                <Row justify='center'>
+                    <Col {...formSizes.form}>
+                        <RegisterForm
+                            fetching={fetching}
+                            userAgreements={userAgreements}
+                            predefinedEmail={predefinedEmail}
+                            hideLoginLink={hideLoginLink}
+                            onSubmit={(registerData: RegisterData): void => {
+                                onRegister(registerData);
+                            }}
+                        />
                     </Col>
                 </Row>
             </Col>
-        </Row>
+        </SigningLayout>
     );
 }
 

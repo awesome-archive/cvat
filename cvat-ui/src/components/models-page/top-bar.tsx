@@ -1,53 +1,105 @@
-import React from 'react';
-import { RouteComponentProps } from 'react-router';
-import { withRouter } from 'react-router-dom';
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
 
+import React, { useState } from 'react';
+import { Row, Col } from 'antd/lib/grid';
+import Input from 'antd/lib/input';
 import {
-    Col,
-    Row,
-    Button,
-} from 'antd';
+    SortingComponent,
+    ResourceFilterHOC,
+    defaultVisibility,
+    ResourceSelectionInfo,
+} from 'components/resource-sorting-filtering';
+import { CombinedState, ModelsQuery } from 'reducers';
+import { usePlugins } from 'utils/hooks';
+import dimensions from 'utils/dimensions';
+import {
+    localStorageRecentKeyword, localStorageRecentCapacity, config,
+} from './models-filter-configuration';
 
-import Text from 'antd/lib/typography/Text';
+const FilteringComponent = ResourceFilterHOC(
+    config, localStorageRecentKeyword, localStorageRecentCapacity,
+);
 
-type Props = {
-    installedAutoAnnotation: boolean;
-} & RouteComponentProps;
+interface VisibleTopBarProps {
+    onApplyFilter(filter: string | null): void;
+    onApplySorting(sorting: string | null): void;
+    onApplySearch(search: string | null): void;
+    query: ModelsQuery;
+    disabled?: boolean;
+    selectedCount: number;
+    onSelectAll: () => void;
+}
 
-function TopBarComponent(props: Props): JSX.Element {
+export default function TopBarComponent(props: Readonly<VisibleTopBarProps>): JSX.Element {
     const {
-        installedAutoAnnotation,
-        history,
+        query, onApplyFilter, onApplySorting, onApplySearch, disabled, selectedCount, onSelectAll,
     } = props;
+    const [visibility, setVisibility] = useState(defaultVisibility);
+    const plugins = usePlugins((state: CombinedState) => state.plugins.components.modelsPage.topBar.items, props);
+    const controls = [];
+    if (plugins.length) {
+        controls.push(
+            ...plugins.map(({ component: Component }, index) => (
+                <Component key={index} targetProps={props} />
+            )),
+        );
+    }
 
     return (
-        <Row type='flex' justify='center' align='middle'>
-            <Col md={11} lg={9} xl={8} xxl={7}>
-                <Text className='cvat-title'>Models</Text>
-            </Col>
-            <Col
-                md={{ span: 11 }}
-                lg={{ span: 9 }}
-                xl={{ span: 8 }}
-                xxl={{ span: 7 }}
-            >
-                { installedAutoAnnotation
-                    && (
-                        <Button
-                            size='large'
-                            id='cvat-create-model-button'
-                            type='primary'
-                            onClick={
-                                (): void => history.push('/models/create')
-                            }
-                        >
-                            Create new model
-                        </Button>
-                    )
-                }
+        <Row className='cvat-models-page-top-bar' justify='center' align='middle'>
+            <Col {...dimensions}>
+                <div className='cvat-models-page-filters-wrapper'>
+                    <div>
+                        <Input.Search
+                            disabled={disabled}
+                            enterButton
+                            onSearch={(phrase: string) => {
+                                onApplySearch(phrase);
+                            }}
+                            defaultValue={query.search || ''}
+                            className='cvat-models-page-search-bar'
+                            placeholder='Search ...'
+                        />
+                        <ResourceSelectionInfo selectedCount={selectedCount} onSelectAll={onSelectAll} />
+                    </div>
+                    <div>
+                        <SortingComponent
+                            disabled={disabled}
+                            visible={visibility.sorting}
+                            onVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, sorting: visible })
+                            )}
+                            defaultFields={query.sort?.split(',') || ['-ID']}
+                            sortingFields={['ID', 'Target URL', 'Owner', 'Description', 'Type', 'Updated date']}
+                            onApplySorting={onApplySorting}
+                        />
+                        <FilteringComponent
+                            disabled={disabled}
+                            value={query.filter}
+                            predefinedVisible={visibility.predefined}
+                            builderVisible={visibility.builder}
+                            recentVisible={visibility.recent}
+                            onPredefinedVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, predefined: visible })
+                            )}
+                            onBuilderVisibleChange={(visible: boolean) => (
+                                setVisibility({ ...defaultVisibility, builder: visible })
+                            )}
+                            onRecentVisibleChange={(visible: boolean) => (
+                                setVisibility({
+                                    ...defaultVisibility,
+                                    builder: visibility.builder,
+                                    recent: visible,
+                                })
+                            )}
+                            onApplyFilter={onApplyFilter}
+                        />
+                    </div>
+                </div>
+                {controls}
             </Col>
         </Row>
     );
 }
-
-export default withRouter(TopBarComponent);

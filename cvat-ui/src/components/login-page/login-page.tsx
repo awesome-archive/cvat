@@ -1,56 +1,53 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
+import { RouteComponentProps, useHistory } from 'react-router';
+import { withRouter } from 'react-router-dom';
+import { Row, Col } from 'antd/lib/grid';
 
-import { RouteComponentProps } from 'react-router';
-import { Link, withRouter } from 'react-router-dom';
-
-import Title from 'antd/lib/typography/Title';
-import Text from 'antd/lib/typography/Text';
-import {
-    Col,
-    Row,
-} from 'antd';
-
+import SigningLayout, { formSizes } from 'components/signing-common/signing-layout';
 import LoginForm, { LoginData } from './login-form';
 
 interface LoginPageComponentProps {
     fetching: boolean;
-    onLogin: (username: string, password: string) => void;
+    renderResetPassword: boolean;
+    renderRegistrationComponent: boolean;
+    renderBasicLoginComponent: boolean;
+    hasEmailVerificationBeenSent: boolean;
+    onLogin: (credential: string, password: string) => void;
 }
 
 function LoginPageComponent(props: LoginPageComponentProps & RouteComponentProps): JSX.Element {
-    const sizes = {
-        xs: { span: 14 },
-        sm: { span: 14 },
-        md: { span: 10 },
-        lg: { span: 4 },
-        xl: { span: 4 },
-    };
-
+    const history = useHistory();
     const {
-        fetching,
-        onLogin,
+        fetching, renderResetPassword, renderRegistrationComponent, renderBasicLoginComponent,
+        hasEmailVerificationBeenSent, onLogin,
     } = props;
 
+    if (hasEmailVerificationBeenSent) {
+        history.push('/auth/email-verification-sent');
+    }
     return (
-        <Row type='flex' justify='center' align='middle'>
-            <Col {...sizes}>
-                <Title level={2}> Login </Title>
-                <LoginForm
-                    fetching={fetching}
-                    onSubmit={(loginData: LoginData): void => {
-                        onLogin(loginData.username, loginData.password);
-                    }}
-                />
-                <Row type='flex' justify='start' align='top'>
-                    <Col>
-                        <Text strong>
-                            New to CVAT? Create
-                            <Link to='/auth/register'> an account</Link>
-                        </Text>
+        <SigningLayout>
+            <Col {...formSizes.wrapper}>
+                <Row justify='center'>
+                    <Col {...formSizes.form}>
+                        <LoginForm
+                            fetching={fetching}
+                            renderResetPassword={renderResetPassword}
+                            renderRegistrationComponent={renderRegistrationComponent}
+                            renderBasicLoginComponent={renderBasicLoginComponent}
+                            onSubmit={(loginData: LoginData): void => {
+                                onLogin(loginData.credential, loginData.password);
+                            }}
+                        />
                     </Col>
                 </Row>
             </Col>
-        </Row>
+        </SigningLayout>
     );
 }
 

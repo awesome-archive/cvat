@@ -1,44 +1,63 @@
+// Copyright (C) 2020-2022 Intel Corporation
+// Copyright (C) CVAT.ai Corporation
+//
+// SPDX-License-Identifier: MIT
+
 import React from 'react';
-
-import {
-    Row,
-    Col,
-    Button,
-    Dropdown,
-    Icon,
-} from 'antd';
-
+import { useHistory } from 'react-router';
+import { Row, Col } from 'antd/lib/grid';
+import { LeftOutlined, MoreOutlined } from '@ant-design/icons';
+import Button from 'antd/lib/button';
 import Text from 'antd/lib/typography/Text';
+import TaskActionsComponent from 'components/tasks-page/actions-menu';
 
-import ActionsMenuContainer from '../../containers/actions-menu/actions-menu';
-import { MenuIcon } from '../../icons';
+import { Task } from 'cvat-core-wrapper';
 
 interface DetailsComponentProps {
-    taskInstance: any;
+    taskInstance: Task;
+    onUpdateTask: (task: Task) => Promise<Task>;
 }
 
 export default function DetailsComponent(props: DetailsComponentProps): JSX.Element {
-    const { taskInstance } = props;
-    const { id } = taskInstance;
+    const { taskInstance, onUpdateTask } = props;
+    const history = useHistory();
 
     return (
-        <Row className='cvat-task-top-bar' type='flex' justify='space-between' align='middle'>
+        <Row className='cvat-task-top-bar' justify='space-between' align='middle'>
             <Col>
-                <Text className='cvat-title'>{`Task details #${id}`}</Text>
+                {taskInstance.projectId ? (
+                    <Button
+                        className='cvat-back-to-project-button'
+                        onClick={() => history.push(`/projects/${taskInstance.projectId}`)}
+                        type='link'
+                        size='large'
+                    >
+                        <LeftOutlined />
+                        Back to project
+                    </Button>
+                ) : (
+                    <Button
+                        className='cvat-back-to-tasks-button'
+                        onClick={() => history.push('/tasks')}
+                        type='link'
+                        size='large'
+                    >
+                        <LeftOutlined />
+                        Back to tasks
+                    </Button>
+                )}
             </Col>
             <Col>
-                <Dropdown overlay={
-                    (
-                        <ActionsMenuContainer
-                            taskInstance={taskInstance}
-                        />
+                <TaskActionsComponent
+                    taskInstance={taskInstance}
+                    onUpdateTask={onUpdateTask}
+                    triggerElement={(
+                        <Button size='middle' className='cvat-task-page-actions-button cvat-actions-menu-button'>
+                            <Text className='cvat-text-color'>Actions</Text>
+                            <MoreOutlined className='cvat-menu-icon' />
+                        </Button>
                     )}
-                >
-                    <Button size='large'>
-                        <Text className='cvat-text-color'>Actions</Text>
-                        <Icon className='cvat-menu-icon' component={MenuIcon} />
-                    </Button>
-                </Dropdown>
+                />
             </Col>
         </Row>
     );
